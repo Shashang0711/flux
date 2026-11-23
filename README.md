@@ -17,8 +17,8 @@ npm workspaces; Node 20.19+ (`.nvmrc`).
 
 ## Getting started
 
-1. **Database.** Either `docker compose up -d` (Postgres 16, user/password/db `flux`), or create a
-   database on an existing Postgres server.
+1. **Database.** Either `docker compose up -d` (Postgres 16 on host port **5433**, user/password/db
+   `flux`), or create a database on an existing Postgres server and set `DATABASE_URL` accordingly.
 2. **Environment.**
    ```bash
    cp apps/api/.env.example apps/api/.env   # set DATABASE_URL if not using Docker
