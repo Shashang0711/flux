@@ -1,0 +1,44 @@
+.main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 64px 16px;
+}
+
+.title {
+  margin: 0;
+  font-size: 2.5rem;
+  color: var(--brand);
+}
+
+.subtitle {
+  margin: 4px 0 32px;
+  color: var(--muted);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+.label {
+  color: var(--muted);
+}
+
+.ok {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.bad {
+  color: var(--bad);
+  font-weight: 600;
+}

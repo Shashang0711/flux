@@ -1,0 +1,36 @@
+{
+  "name": "flux",
+  "private": true,
+  "description": "FLUX – Fluid & Laboratory Unified eXchange",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "postinstall": "npm run build -w @flux/shared && npm run prisma:generate -w @flux/api",
+    "dev": "npm run dev:api & npm run dev:web & wait",
+    "dev:api": "npm run dev -w @flux/api",
+    "dev:web": "npm run dev -w @flux/web",
+    "build": "npm run build -w @flux/shared && npm run build -w @flux/api && npm run build -w @flux/web",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "npm run test:e2e -w @flux/api",
+    "db:migrate": "npm run prisma:migrate -w @flux/api",
+    "db:seed": "npm run prisma:seed -w @flux/api"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^16.5.0",
+    "prettier": "^3.10.1",
+    "typescript": "~5.8",
+    "typescript-eslint": "^8.74.0"
+  }
+}
