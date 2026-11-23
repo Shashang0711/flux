@@ -6,6 +6,7 @@ import { validateEnv, type Env } from './config/env';
 import { PrismaModule } from './database/prisma.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { ClientsModule } from './modules/clients/clients.module';
 import { HealthModule } from './modules/health/health.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { ReferenceDataModule } from './modules/reference-data/reference-data.module';
@@ -48,6 +49,7 @@ export const REQUEST_ID_HEADER = 'x-request-id';
     RolesModule,
     AuditModule,
     ReferenceDataModule,
+    ClientsModule,
   ],
 })
 export class AppModule {}

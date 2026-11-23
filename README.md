@@ -217,6 +217,27 @@ generic table, `reference_items`; the lists themselves are `REFERENCE_LISTS` in 
 - Tenant changes go to the tenant's audit log; changes to defaults go to the **platform audit
   log** (`audit_logs.tenant_id` NULL, invisible to tenants; Platform → Audit log).
 
+## Clients
+
+Clients (module `clients`, permissions `client.view` / `client.manage`) follow section 4 of the
+design pack: the client master is kept separate from its **addresses**, **contacts** and
+**billing parties** (Billing Party Grid + Add). No Industry field; the pricing scheme waits for
+Parts & Pricing.
+
+- **Client ID** is generated per tenant: `CL-00001`, `CL-00002`, … (`formatClientCode`).
+- At most one **primary contact** and one **default billing party** per client (partial unique
+  indexes; setting a new one clears the old). An inactive billing party is never the default.
+- Clients and billing parties are deactivated, never deleted (vessels and invoices will refer to
+  them); addresses and contacts can be removed.
+- Every change, including sub-records, is audited on the client's history.
+
+## Numbering
+
+`nextSequence(tx, tenantId, key)` (`apps/api/src/database/sequences.ts`) returns the next number
+of a per-tenant counter inside the caller's transaction. Concurrent creates get distinct numbers,
+and a rolled-back transaction gives its number back, so codes have no gaps. Use it for every
+human-readable code (clients now; vessels, batches and samples later) with its own `key`.
+
 ## Audit log
 
 Every significant change is recorded in `audit_logs`: actor, action, record, request ID, IP and

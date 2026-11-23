@@ -18,6 +18,25 @@ const FIELD_LABELS: Record<string, string> = {
   clonedFrom: 'Cloned from',
   code: 'Code',
   sortOrder: 'Sort order',
+  tradingName: 'Trading name',
+  phone: 'Phone',
+  website: 'Website',
+  taxNumber: 'Tax number',
+  notes: 'Notes',
+  type: 'Type',
+  label: 'Label',
+  line1: 'Address line 1',
+  line2: 'Address line 2',
+  city: 'City',
+  region: 'Region',
+  postalCode: 'Postal code',
+  country: 'Country',
+  jobTitle: 'Job title',
+  isPrimary: 'Primary',
+  isDefault: 'Default',
+  contact: 'Contact',
+  address: 'Address',
+  billingParty: 'Billing party',
 };
 
 function show(value: unknown): string {
@@ -60,6 +79,7 @@ function Changes({ entry }: { entry: AuditLogDto }) {
 function entityHref(entry: AuditLogDto): string | null {
   if (entry.entity.type === 'user') return `/admin/users/${entry.entity.id}`;
   if (entry.entity.type === 'role') return `/admin/roles/${entry.entity.id}`;
+  if (entry.entity.type === 'client') return `/admin/clients/${entry.entity.id}`;
   return null;
 }
 
