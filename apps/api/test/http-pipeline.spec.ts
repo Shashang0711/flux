@@ -4,9 +4,11 @@ import request from 'supertest';
 import type { PageQuery } from '@flux/shared';
 import { Paginated, pageQuerySchema } from '../src/common/pagination/pagination';
 import { ZodValidationPipe } from '../src/common/validation/zod-validation.pipe';
+import { Public } from '../src/modules/auth/decorators';
 import { createTestApp, type PrismaMock } from './create-test-app';
 
 /** Throwaway routes that exercise the shared pipeline pieces. */
+@Public()
 @Controller('__test')
 class PipelineTestController {
   @Get('items')
@@ -29,12 +31,23 @@ class PipelineTestController {
   }
 }
 
+/** No @Public(): must be rejected without a session. */
+@Controller('__test-protected')
+class ProtectedTestController {
+  @Get()
+  secret(): string {
+    return 'secret';
+  }
+}
+
 describe('HTTP pipeline', () => {
   let app: INestApplication;
   let prisma: PrismaMock;
 
   beforeAll(async () => {
-    ({ app, prisma } = await createTestApp({ controllers: [PipelineTestController] }));
+    ({ app, prisma } = await createTestApp({
+      controllers: [PipelineTestController, ProtectedTestController],
+    }));
   });
 
   afterAll(async () => {
@@ -114,6 +127,12 @@ describe('HTTP pipeline', () => {
       });
       expect(JSON.stringify(res.body)).not.toContain('secret');
     });
+  });
+
+  it('denies routes by default when there is no session', async () => {
+    const res = await request(app.getHttpServer()).get('/api/v1/__test-protected').expect(401);
+    expect(res.body.error.code).toBe('UNAUTHENTICATED');
+    expect(JSON.stringify(res.body)).not.toContain('secret"');
   });
 
   it('sets security headers', async () => {

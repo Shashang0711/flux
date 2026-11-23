@@ -28,6 +28,10 @@ export class AppException extends Error {
     return new AppException(HttpStatus.CONFLICT, ErrorCode.CONFLICT, message, details);
   }
 
+  static unauthenticated(message = 'You must be signed in'): AppException {
+    return new AppException(HttpStatus.UNAUTHORIZED, ErrorCode.UNAUTHENTICATED, message);
+  }
+
   static forbidden(message = 'You do not have permission to perform this action'): AppException {
     return new AppException(HttpStatus.FORBIDDEN, ErrorCode.FORBIDDEN, message);
   }

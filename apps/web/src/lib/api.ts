@@ -24,7 +24,12 @@ export interface ApiResult<T> {
 
 type FetchLike = typeof fetch;
 
+/**
+ * Server code calls the API directly; browser code goes through the same-origin
+ * `/api/v1` rewrite in next.config.ts.
+ */
 export function apiBaseUrl(): string {
+  if (typeof window !== 'undefined') return '/api/v1';
   return process.env.API_BASE_URL ?? 'http://localhost:4000/api/v1';
 }
 
@@ -41,7 +46,11 @@ export async function apiFetch<T>(
   try {
     response = await fetchImpl(`${apiBaseUrl()}${path}`, {
       ...init,
-      headers: { Accept: 'application/json', ...init.headers },
+      headers: {
+        Accept: 'application/json',
+        ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...init.headers,
+      },
     });
   } catch {
     throw new ApiError(0, {
@@ -49,6 +58,8 @@ export async function apiFetch<T>(
       message: 'Could not reach the FLUX API',
     });
   }
+
+  if (response.status === 204) return { data: undefined as T };
 
   const body: unknown = await response.json().catch(() => undefined);
 

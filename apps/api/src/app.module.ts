@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { Module } from '@nestjs/common';
+import { Module, RequestMethod } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { validateEnv, type Env } from './config/env';
 import { PrismaModule } from './database/prisma.module';
+import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
+import { UsersModule } from './modules/users/users.module';
 
 export const REQUEST_ID_HEADER = 'x-request-id';
 
@@ -14,6 +16,8 @@ export const REQUEST_ID_HEADER = 'x-request-id';
     LoggerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<Env, true>) => ({
+        // Nest 11 route syntax; the library default ('*') triggers a legacy-route warning.
+        forRoutes: [{ path: '{*splat}', method: RequestMethod.ALL }],
         pinoHttp: {
           level: config.get('LOG_LEVEL', { infer: true }),
           // Correlation ID: honour an inbound header, otherwise generate one; echo it back.
@@ -34,6 +38,8 @@ export const REQUEST_ID_HEADER = 'x-request-id';
     }),
     PrismaModule,
     HealthModule,
+    AuthModule,
+    UsersModule,
   ],
 })
 export class AppModule {}

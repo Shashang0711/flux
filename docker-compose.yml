@@ -1,7 +1,9 @@
-# Local infrastructure for development. Run: docker compose up -d
-# Host port defaults to 5433 so it can run alongside a locally installed Postgres on 5432.
-# Override with POSTGRES_PORT=5432 docker compose up -d (and update DATABASE_URL to match).
-# Matches DATABASE_URL in apps/api/.env.example.
+# Full local stack: Postgres, API and web. Run: docker compose up -d --build
+# Then open http://localhost:3000 (API on http://localhost:4000/api/v1).
+#
+# Host ports can be overridden: POSTGRES_PORT (default 5433, so it can run alongside a locally
+# installed Postgres on 5432), API_PORT (default 4000), WEB_PORT (default 3000).
+# To run only the database and use `npm run dev` for the apps: docker compose up -d postgres
 services:
   postgres:
     image: postgres:16-alpine
@@ -17,6 +19,56 @@ services:
       test: ['CMD-SHELL', 'pg_isready -U flux']
       interval: 5s
       retries: 10
+
+  api:
+    build:
+      context: .
+      target: api
+    init: true
+    environment:
+      PORT: 4000
+      # Inside the compose network Postgres is reached by service name on its container port.
+      DATABASE_URL: postgresql://flux:flux@postgres:5432/flux?schema=public
+      CORS_ORIGINS: http://localhost:${WEB_PORT:-3000}
+      LOG_LEVEL: info
+      # Served over plain HTTP locally, so the session cookie must not require HTTPS.
+      COOKIE_SECURE: 'false'
+      # Requests arrive via the web container on the private compose network; trust it so the
+      # API sees the real client IP (used by the per-IP login rate limit).
+      TRUST_PROXY: 'loopback, uniquelocal'
+      # Bootstrap admin, created on start if it does not exist yet. Set FLUX_ADMIN_PASSWORD
+      # (12+ characters) in a .env file next to this compose file; if unset, seeding is skipped.
+      FLUX_ADMIN_EMAIL: ${FLUX_ADMIN_EMAIL:-admin@flux.local}
+      FLUX_ADMIN_NAME: ${FLUX_ADMIN_NAME:-System Administrator}
+      FLUX_ADMIN_PASSWORD: ${FLUX_ADMIN_PASSWORD:-}
+    ports:
+      - '${API_PORT:-4000}:4000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:4000/api/v1/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      start_period: 20s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      target: web
+    init: true
+    environment:
+      # Server-side calls go to the API container directly.
+      API_BASE_URL: http://api:4000/api/v1
+    ports:
+      - '${WEB_PORT:-3000}:3000'
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   flux-pg:

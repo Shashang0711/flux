@@ -11,7 +11,7 @@
   },
   "scripts": {
     "postinstall": "npm run build -w @flux/shared && npm run prisma:generate -w @flux/api",
-    "dev": "npm run dev:api & npm run dev:web & wait",
+    "dev": "npm run dev -w @flux/shared & npm run dev:api & npm run dev:web & wait",
     "dev:api": "npm run dev -w @flux/api",
     "dev:web": "npm run dev -w @flux/web",
     "build": "npm run build -w @flux/shared && npm run build -w @flux/api && npm run build -w @flux/web",
