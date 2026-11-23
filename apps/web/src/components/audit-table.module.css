@@ -1,0 +1,31 @@
+.when {
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.sub {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.changes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.field {
+  color: var(--muted);
+}
+
+.added {
+  color: var(--ok);
+}
+
+.removed {
+  color: var(--bad);
+}

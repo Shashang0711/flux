@@ -20,6 +20,7 @@ import type { z } from 'zod';
 import { AppException } from '../../common/errors/app.exception';
 import { Paginated, toSkipTake } from '../../common/pagination/pagination';
 import { TenantDb, type TenantTx } from '../../database/tenant-db.service';
+import { compactChanges, fieldChanges, listChange, recordAudit } from '../audit/audit';
 import type { AuthUser, TenantContext } from '../auth/auth.types';
 import { ROLE_GRANT_INCLUDE, grantOf } from './role-loader';
 import {
@@ -71,6 +72,17 @@ const ROLE_INCLUDE = {
   ...ROLE_GRANT_INCLUDE,
   _count: { select: { userRoles: true } },
 } as const;
+
+const EMPTY_GRANT: RoleGrant = { portals: [], modules: [], permissions: [] };
+
+/** Audit view of a grant change: one {added, removed} per list that differs. */
+function grantChanges(before: RoleGrant, after: RoleGrant) {
+  return {
+    portals: listChange(before.portals, after.portals),
+    modules: listChange(before.modules, after.modules),
+    permissions: listChange(before.permissions, after.permissions),
+  };
+}
 
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
@@ -132,6 +144,16 @@ export class RolesService {
           },
         });
         await this.writeGrant(tx, ctx.tenantId, role.id, grant);
+        await recordAudit(tx, {
+          tenantId: ctx.tenantId,
+          actor,
+          action: 'role.created',
+          entity: { type: 'role', id: role.id, label: role.name },
+          changes: compactChanges({
+            ...fieldChanges(null, role, ['name', 'description', 'defaultPortal', 'isActive']),
+            ...grantChanges(EMPTY_GRANT, grant),
+          }),
+        });
         return toRoleDto(await this.find(tx, role.id), licensed);
       });
     } catch (error) {
@@ -140,7 +162,12 @@ export class RolesService {
     }
   }
 
-  async update(ctx: TenantContext, id: string, input: UpdateRoleRequest): Promise<RoleDto> {
+  async update(
+    ctx: TenantContext,
+    id: string,
+    input: UpdateRoleRequest,
+    actor: AuthUser,
+  ): Promise<RoleDto> {
     try {
       return await this.db.run(ctx.tenantId, async (tx) => {
         const role = await this.find(tx, id);
@@ -154,7 +181,26 @@ export class RolesService {
           // Deactivating removes the role's access from all its users at once.
           await tx.$queryRaw`SELECT id FROM roles WHERE id = ${id}::uuid FOR UPDATE`;
         }
-        await tx.role.update({ where: { id }, data: input });
+        const updated = await tx.role.update({ where: { id }, data: input });
+        const changes = fieldChanges(role, updated, [
+          'name',
+          'description',
+          'defaultPortal',
+          'isActive',
+        ]);
+        if (Object.keys(changes).length > 0) {
+          await recordAudit(tx, {
+            tenantId: ctx.tenantId,
+            actor,
+            action: changes.isActive
+              ? updated.isActive
+                ? 'role.activated'
+                : 'role.deactivated'
+              : 'role.updated',
+            entity: { type: 'role', id, label: updated.name },
+            changes,
+          });
+        }
         return toRoleDto(await this.find(tx, id), await tenantModules(tx));
       });
     } catch (error) {
@@ -170,9 +216,14 @@ export class RolesService {
     portals: PortalKey[],
     actor: AuthUser,
   ): Promise<RoleDto> {
-    return this.replaceGrant(ctx, id, actor, (current) => ({ ...current, portals }), {
-      validateDefaultPortal: true,
-    });
+    return this.replaceGrant(
+      ctx,
+      id,
+      actor,
+      'role.portals_changed',
+      (current) => ({ ...current, portals }),
+      { validateDefaultPortal: true },
+    );
   }
 
   /** Module Access tab. Permissions of removed modules are dropped. */
@@ -182,7 +233,7 @@ export class RolesService {
     modules: ModuleKey[],
     actor: AuthUser,
   ): Promise<RoleDto> {
-    return this.replaceGrant(ctx, id, actor, (current) => ({
+    return this.replaceGrant(ctx, id, actor, 'role.modules_changed', (current) => ({
       ...current,
       modules,
       permissions: current.permissions.filter((key) =>
@@ -198,7 +249,10 @@ export class RolesService {
     permissions: PermissionKey[],
     actor: AuthUser,
   ): Promise<RoleDto> {
-    return this.replaceGrant(ctx, id, actor, (current) => ({ ...current, permissions }));
+    return this.replaceGrant(ctx, id, actor, 'role.permissions_changed', (current) => ({
+      ...current,
+      permissions,
+    }));
   }
 
   /** Clone From → New Role Name, copying only the selected parts. */
@@ -238,6 +292,18 @@ export class RolesService {
           },
         });
         await this.writeGrant(tx, ctx.tenantId, role.id, grant);
+        await recordAudit(tx, {
+          tenantId: ctx.tenantId,
+          actor,
+          action: 'role.cloned',
+          entity: { type: 'role', id: role.id, label: role.name },
+          relatedIds: [source.id],
+          changes: compactChanges({
+            clonedFrom: { from: null, to: source.name },
+            ...fieldChanges(null, role, ['name', 'defaultPortal']),
+            ...grantChanges(EMPTY_GRANT, grant),
+          }),
+        });
         return toRoleDto(await this.find(tx, role.id), licensed);
       });
     } catch (error) {
@@ -269,18 +335,36 @@ export class RolesService {
       const role = await this.find(tx, id);
       const licensed = await tenantModules(tx);
       assertNoEscalation(actor, grantOf(role, licensed), licensed);
-      const found = await tx.user.count({ where: { id: { in: userIds } } });
-      if (found !== userIds.length)
+      const users = await tx.user.findMany({
+        where: { id: { in: userIds } },
+        select: {
+          id: true,
+          name: true,
+          userRoles: { where: { roleId: id }, select: { roleId: true } },
+        },
+      });
+      if (users.length !== userIds.length) {
         throw AppException.badRequest('One or more users were not found');
+      }
+      const newlyAssigned = users.filter((u) => u.userRoles.length === 0);
       await tx.userRole.createMany({
-        data: userIds.map((userId) => ({
+        data: newlyAssigned.map((user) => ({
           tenantId: ctx.tenantId,
-          userId,
+          userId: user.id,
           roleId: id,
           assignedById: actor.id,
         })),
-        skipDuplicates: true,
       });
+      if (newlyAssigned.length > 0) {
+        await recordAudit(tx, {
+          tenantId: ctx.tenantId,
+          actor,
+          action: 'role.users_assigned',
+          entity: { type: 'role', id, label: role.name },
+          relatedIds: newlyAssigned.map((u) => u.id),
+          changes: { users: { added: newlyAssigned.map((u) => u.name), removed: [] } },
+        });
+      }
     });
     return this.users(ctx, id);
   }
@@ -291,8 +375,20 @@ export class RolesService {
       const licensed = await tenantModules(tx);
       assertNoEscalation(actor, grantOf(role, licensed), licensed);
       if (role.isSystem) await assertAdministratorRemains(tx, { removingUserIds: [userId] });
-      const { count } = await tx.userRole.deleteMany({ where: { roleId: id, userId } });
-      if (count === 0) throw AppException.notFound('Role assignment');
+      const assignment = await tx.userRole.findUnique({
+        where: { userId_roleId: { userId, roleId: id } },
+        select: { user: { select: { name: true } } },
+      });
+      if (!assignment) throw AppException.notFound('Role assignment');
+      await tx.userRole.delete({ where: { userId_roleId: { userId, roleId: id } } });
+      await recordAudit(tx, {
+        tenantId: ctx.tenantId,
+        actor,
+        action: 'role.user_unassigned',
+        entity: { type: 'role', id, label: role.name },
+        relatedIds: [userId],
+        changes: { users: { added: [], removed: [assignment.user.name] } },
+      });
     });
   }
 
@@ -306,6 +402,7 @@ export class RolesService {
     ctx: TenantContext,
     id: string,
     actor: AuthUser,
+    action: 'role.portals_changed' | 'role.modules_changed' | 'role.permissions_changed',
     change: (current: RoleGrant) => RoleGrant,
     options: { validateDefaultPortal?: boolean } = {},
   ): Promise<RoleDto> {
@@ -313,7 +410,8 @@ export class RolesService {
       const role = await this.find(tx, id);
       if (role.isSystem) throw SYSTEM_ROLE_LOCKED();
       const licensed = await tenantModules(tx);
-      const next = change(grantOf(role, licensed));
+      const current = grantOf(role, licensed);
+      const next = change(current);
       assertGrantIsValid(next, licensed);
       assertNoEscalation(actor, next, licensed);
       if (options.validateDefaultPortal && !next.portals.includes(role.defaultPortal)) {
@@ -325,6 +423,17 @@ export class RolesService {
       }
       await this.writeGrant(tx, ctx.tenantId, id, next, { replace: true });
       await tx.role.update({ where: { id }, data: { updatedAt: new Date() } });
+      // Includes knock-on changes, e.g. permissions dropped with their module.
+      const changes = compactChanges(grantChanges(current, next));
+      if (changes) {
+        await recordAudit(tx, {
+          tenantId: ctx.tenantId,
+          actor,
+          action,
+          entity: { type: 'role', id, label: role.name },
+          changes,
+        });
+      }
       return toRoleDto(await this.find(tx, id), licensed);
     });
   }

@@ -34,7 +34,10 @@ export class AuthGuard implements CanActivate {
     const session = token ? await this.sessions.resolve(token) : null;
     if (!session) throw AppException.unauthenticated();
 
-    const { user } = session;
+    const user = {
+      ...session.user,
+      request: { id: request.id === undefined ? undefined : String(request.id), ip: request.ip },
+    };
     request.user = user;
     request.sessionId = session.sessionId;
 

@@ -99,8 +99,9 @@ export class RolesController {
     @CurrentTenant() tenant: TenantContext,
     @Param('id', ParseUUIDPipe) id: string,
     @body(updateRoleSchema) input: UpdateRoleRequest,
+    @CurrentUser() actor: AuthUser,
   ): Promise<RoleDto> {
-    return this.roles.update(tenant, id, input);
+    return this.roles.update(tenant, id, input, actor);
   }
 
   @Put(':id/portals')

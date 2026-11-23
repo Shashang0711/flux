@@ -194,38 +194,61 @@ RLS while tenant queries switch to `flux_app`.
 - Guard endpoints with `@RequirePermission('<key>')` (all listed keys required). Combine with
   `@RequireModule` where the whole controller belongs to an optional module.
 
+## Audit log
+
+Every significant change is recorded in `audit_logs`: actor, action, record, request ID, IP and
+field-level changes (`{ field: {from, to} }` or `{ list: {added, removed} }`). Never secrets.
+
+- **Append-only.** The app role may only `SELECT`/`INSERT`; a trigger rejects `UPDATE` and
+  `DELETE` for everyone, including the table owner.
+- **Atomic.** `recordAudit(tx, …)` writes with the caller's transaction, so an entry exists if and
+  only if the change was committed. Rejected changes leave nothing behind.
+- **Per-record history.** `relatedIds` lists other records an entry affected (e.g. the roles in a
+  user's role change), so `GET /audit-logs?entityId=…` returns everything touching that record.
+- **Platform actions** on a tenant (creation, modules, suspension) appear in the tenant's log as
+  "FLUX platform"; operators see their own names in the platform view of the tenant.
+
+When adding a feature that changes data:
+
+1. add its action key and label to `AUDIT_ACTIONS` in `@flux/shared` (never rename keys);
+2. call `recordAudit(tx, …)` in the same transaction as the change, with `fieldChanges()` /
+   `listChange()` for the diff, and only when something actually changed;
+3. add an e2e test asserting the entry and its changes.
+
 ### Endpoints
 
-| Method and path                            | Access         | Purpose                                                     |
-| ------------------------------------------ | -------------- | ----------------------------------------------------------- |
-| `POST /api/v1/auth/login`                  | Public         | Sign in; sets the session cookie                            |
-| `POST /api/v1/auth/logout`                 | Public         | Revoke the session and clear the cookie                     |
-| `GET /api/v1/auth/me`                      | Signed in      | Current user                                                |
-| `POST /api/v1/auth/change-password`        | Signed in      | Change own password; ends other sessions                    |
-| `GET /api/v1/users`                        | `user.view`    | List own tenant's users (`page`, `pageSize`, `q`, `status`) |
-| `POST /api/v1/users`                       | `user.manage`  | Create a user (optionally with `roleIds`)                   |
-| `GET /api/v1/users/:id`                    | `user.view`    | Read user                                                   |
-| `PATCH /api/v1/users/:id`                  | `user.manage`  | Update name, email or status                                |
-| `PUT /api/v1/users/:id/roles`              | `user.manage`  | Replace the user's roles                                    |
-| `POST /api/v1/users/:id/reset-password`    | `user.manage`  | Set a new password; ends their sessions                     |
-| `GET /api/v1/access/catalogue`             | `role.view`    | Licensed modules, portals and permissions                   |
-| `GET /api/v1/roles`                        | `role.view`    | List roles (`q`, `isActive`)                                |
-| `POST /api/v1/roles`                       | `role.manage`  | Create role with portals, modules, permissions              |
-| `GET /api/v1/roles/:id`                    | `role.view`    | Read role and its access                                    |
-| `PATCH /api/v1/roles/:id`                  | `role.manage`  | Name, description, default portal, active                   |
-| `PUT /api/v1/roles/:id/portals`            | `role.manage`  | Portal Access tab                                           |
-| `PUT /api/v1/roles/:id/modules`            | `role.manage`  | Module Access tab                                           |
-| `PUT /api/v1/roles/:id/permissions`        | `role.manage`  | Role Permissions tab                                        |
-| `POST /api/v1/roles/:id/clone`             | `role.manage`  | Clone with copy options                                     |
-| `GET /api/v1/roles/:id/users`              | `role.view`    | Assigned Users tab                                          |
-| `POST /api/v1/roles/:id/users`             | `user.manage`  | Assign users                                                |
-| `DELETE /api/v1/roles/:id/users/:userId`   | `user.manage`  | Unassign a user                                             |
-| `GET /api/v1/platform/modules`             | Platform admin | Module catalogue                                            |
-| `GET /api/v1/platform/tenants`             | Platform admin | List tenants (`q`, `status`)                                |
-| `POST /api/v1/platform/tenants`            | Platform admin | Create tenant + modules + first admin                       |
-| `GET /api/v1/platform/tenants/:id`         | Platform admin | Read tenant                                                 |
-| `PATCH /api/v1/platform/tenants/:id`       | Platform admin | Rename, suspend or reactivate                               |
-| `PUT /api/v1/platform/tenants/:id/modules` | Platform admin | Set licensed optional modules                               |
+| Method and path                               | Access         | Purpose                                                                 |
+| --------------------------------------------- | -------------- | ----------------------------------------------------------------------- |
+| `POST /api/v1/auth/login`                     | Public         | Sign in; sets the session cookie                                        |
+| `POST /api/v1/auth/logout`                    | Public         | Revoke the session and clear the cookie                                 |
+| `GET /api/v1/auth/me`                         | Signed in      | Current user                                                            |
+| `POST /api/v1/auth/change-password`           | Signed in      | Change own password; ends other sessions                                |
+| `GET /api/v1/users`                           | `user.view`    | List own tenant's users (`page`, `pageSize`, `q`, `status`)             |
+| `POST /api/v1/users`                          | `user.manage`  | Create a user (optionally with `roleIds`)                               |
+| `GET /api/v1/users/:id`                       | `user.view`    | Read user                                                               |
+| `PATCH /api/v1/users/:id`                     | `user.manage`  | Update name, email or status                                            |
+| `PUT /api/v1/users/:id/roles`                 | `user.manage`  | Replace the user's roles                                                |
+| `POST /api/v1/users/:id/reset-password`       | `user.manage`  | Set a new password; ends their sessions                                 |
+| `GET /api/v1/access/catalogue`                | `role.view`    | Licensed modules, portals and permissions                               |
+| `GET /api/v1/roles`                           | `role.view`    | List roles (`q`, `isActive`)                                            |
+| `POST /api/v1/roles`                          | `role.manage`  | Create role with portals, modules, permissions                          |
+| `GET /api/v1/roles/:id`                       | `role.view`    | Read role and its access                                                |
+| `PATCH /api/v1/roles/:id`                     | `role.manage`  | Name, description, default portal, active                               |
+| `PUT /api/v1/roles/:id/portals`               | `role.manage`  | Portal Access tab                                                       |
+| `PUT /api/v1/roles/:id/modules`               | `role.manage`  | Module Access tab                                                       |
+| `PUT /api/v1/roles/:id/permissions`           | `role.manage`  | Role Permissions tab                                                    |
+| `POST /api/v1/roles/:id/clone`                | `role.manage`  | Clone with copy options                                                 |
+| `GET /api/v1/roles/:id/users`                 | `role.view`    | Assigned Users tab                                                      |
+| `POST /api/v1/roles/:id/users`                | `user.manage`  | Assign users                                                            |
+| `DELETE /api/v1/roles/:id/users/:userId`      | `user.manage`  | Unassign a user                                                         |
+| `GET /api/v1/audit-logs`                      | `audit.view`   | Audit log (`action`, `entityType`, `entityId`, `actorId`, `from`, `to`) |
+| `GET /api/v1/platform/tenants/:id/audit-logs` | Platform admin | Organisation-level history of a tenant                                  |
+| `GET /api/v1/platform/modules`                | Platform admin | Module catalogue                                                        |
+| `GET /api/v1/platform/tenants`                | Platform admin | List tenants (`q`, `status`)                                            |
+| `POST /api/v1/platform/tenants`               | Platform admin | Create tenant + modules + first admin                                   |
+| `GET /api/v1/platform/tenants/:id`            | Platform admin | Read tenant                                                             |
+| `PATCH /api/v1/platform/tenants/:id`          | Platform admin | Rename, suspend or reactivate                                           |
+| `PUT /api/v1/platform/tenants/:id/modules`    | Platform admin | Set licensed optional modules                                           |
 
 ## Database conventions
 

@@ -15,6 +15,7 @@ import {
   setTenantModulesSchema,
   tenantListFilterSchema,
   updateTenantSchema,
+  type AuditLogDto,
   type PageQuery,
   type TenantDto,
   type TenantListFilter,
@@ -23,7 +24,9 @@ import {
 import type { z } from 'zod';
 import { Paginated, pageQuerySchema } from '../../common/pagination/pagination';
 import { ZodValidationPipe } from '../../common/validation/zod-validation.pipe';
-import { RequirePlatformAdmin } from '../auth/decorators';
+import { AuditLogService } from '../audit/audit-log.service';
+import type { AuthUser } from '../auth/auth.types';
+import { CurrentUser, RequirePlatformAdmin } from '../auth/decorators';
 import { TenantsService } from './tenants.service';
 
 const listQuerySchema = pageQuerySchema.extend(tenantListFilterSchema.shape);
@@ -32,7 +35,10 @@ const listQuerySchema = pageQuerySchema.extend(tenantListFilterSchema.shape);
 @Controller('platform')
 @RequirePlatformAdmin()
 export class PlatformController {
-  constructor(private readonly tenants: TenantsService) {}
+  constructor(
+    private readonly tenants: TenantsService,
+    private readonly audit: AuditLogService,
+  ) {}
 
   @Get('modules')
   modules(): typeof MODULES {
@@ -54,16 +60,18 @@ export class PlatformController {
   @Post('tenants')
   create(
     @Body(new ZodValidationPipe(createTenantSchema)) body: z.output<typeof createTenantSchema>,
+    @CurrentUser() actor: AuthUser,
   ): Promise<TenantDto> {
-    return this.tenants.create(body);
+    return this.tenants.create(body, actor);
   }
 
   @Patch('tenants/:id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(updateTenantSchema)) body: UpdateTenantRequest,
+    @CurrentUser() actor: AuthUser,
   ): Promise<TenantDto> {
-    return this.tenants.update(id, body);
+    return this.tenants.update(id, body, actor);
   }
 
   @Put('tenants/:id/modules')
@@ -71,7 +79,18 @@ export class PlatformController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(setTenantModulesSchema))
     body: z.output<typeof setTenantModulesSchema>,
+    @CurrentUser() actor: AuthUser,
   ): Promise<TenantDto> {
-    return this.tenants.setModules(id, body.modules);
+    return this.tenants.setModules(id, body.modules, actor);
+  }
+
+  /** Organisation-level history of a tenant (not its internal activity). */
+  @Get('tenants/:id/audit-logs')
+  async history(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(pageQuerySchema)) query: PageQuery,
+  ): Promise<Paginated<AuditLogDto>> {
+    await this.tenants.get(id);
+    return this.audit.listForTenant(id, query);
   }
 }

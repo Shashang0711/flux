@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { validateEnv, type Env } from './config/env';
 import { PrismaModule } from './database/prisma.module';
+import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { PlatformModule } from './modules/platform/platform.module';
@@ -44,6 +45,7 @@ export const REQUEST_ID_HEADER = 'x-request-id';
     UsersModule,
     PlatformModule,
     RolesModule,
+    AuditModule,
   ],
 })
 export class AppModule {}

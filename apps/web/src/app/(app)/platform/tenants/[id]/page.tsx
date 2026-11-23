@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import type { TenantDto } from '@flux/shared';
+import type { AuditLogDto, TenantDto } from '@flux/shared';
+import { AuditTable } from '@/components/audit-table';
 import { StatusBadge } from '@/components/badges';
 import { Forbidden } from '@/components/forbidden';
 import { PageHeader } from '@/components/page-header';
@@ -13,6 +14,9 @@ export default async function TenantPage({ params }: { params: Promise<{ id: str
   if (!session.user.isPlatformAdmin) return <Forbidden />;
   const { id } = await params;
   const { data: tenant } = await loadOrNotFound<TenantDto>(`/platform/tenants/${id}`);
+  const { data: history } = await loadOrNotFound<AuditLogDto[]>(
+    `/platform/tenants/${id}/audit-logs?pageSize=20`,
+  );
 
   return (
     <>
@@ -28,6 +32,10 @@ export default async function TenantPage({ params }: { params: Promise<{ id: str
       <TenantDetailsForm tenant={tenant} />
       <TenantModulesForm tenant={tenant} />
       <TenantStatusCard tenant={tenant} />
+      <section className="card">
+        <h2 className="card-title">History</h2>
+        <AuditTable entries={history} showEntity={false} linkEntities={false} />
+      </section>
     </>
   );
 }
