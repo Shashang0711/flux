@@ -17,6 +17,7 @@ import {
   loginSchema,
   type ChangePasswordRequest,
   type LoginRequest,
+  type SessionInfo,
   type UserDto,
 } from '@flux/shared';
 import { ZodValidationPipe } from '../../common/validation/zod-validation.pipe';
@@ -74,7 +75,7 @@ export class AuthController {
   }
 
   @Get('me')
-  me(@CurrentUser() user: AuthUser): Promise<UserDto> {
+  me(@CurrentUser() user: AuthUser): Promise<SessionInfo> {
     return this.auth.me(user.id);
   }
 

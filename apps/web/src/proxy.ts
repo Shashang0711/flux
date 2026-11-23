@@ -3,7 +3,7 @@ import { SESSION_COOKIE_NAME } from '@flux/shared';
 
 /**
  * Optimistic check only: redirects to /login when there is no session cookie at all.
- * The session itself is validated by the API (requireUser in Server Components), as the
+ * The session itself is validated by the API (requireSession in Server Components), as the
  * Next.js docs recommend keeping database checks out of Proxy.
  */
 export function proxy(request: NextRequest) {

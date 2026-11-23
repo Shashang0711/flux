@@ -3,7 +3,7 @@ import { z } from 'zod';
 /** Name of the httpOnly cookie carrying the session token. */
 export const SESSION_COOKIE_NAME = 'flux_session';
 
-export const PASSWORD_MIN_LENGTH = 12;
+export const PASSWORD_MIN_LENGTH = 8;
 /** Upper bound protects the server from hashing arbitrarily large inputs. */
 export const PASSWORD_MAX_LENGTH = 128;
 
@@ -16,7 +16,10 @@ export interface UserDto {
   email: string;
   name: string;
   status: UserStatus;
-  isSystemAdmin: boolean;
+  /** Platform operator (no tenant). */
+  isPlatformAdmin: boolean;
+  /** Temporary until M3b roles: manages users of their own tenant. */
+  isTenantAdmin: boolean;
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -55,7 +58,7 @@ export const createUserSchema = z.object({
   email: emailSchema,
   name: nameSchema,
   password: passwordSchema,
-  isSystemAdmin: z.boolean().default(false),
+  isTenantAdmin: z.boolean().default(false),
 });
 export type CreateUserRequest = z.input<typeof createUserSchema>;
 
@@ -64,7 +67,7 @@ export const updateUserSchema = z
     email: emailSchema,
     name: nameSchema,
     status: z.enum([UserStatus.ACTIVE, UserStatus.DISABLED]),
-    isSystemAdmin: z.boolean(),
+    isTenantAdmin: z.boolean(),
   })
   .partial()
   .refine((value) => Object.keys(value).length > 0, { message: 'No fields to update' });
@@ -79,3 +82,12 @@ export const userListFilterSchema = z.object({
   status: z.enum([UserStatus.ACTIVE, UserStatus.DISABLED]).optional(),
 });
 export type UserListFilter = z.infer<typeof userListFilterSchema>;
+
+/** The signed-in user and their tenant context, from GET /auth/me. */
+export interface SessionInfo {
+  user: UserDto;
+  /** Null for platform administrators. */
+  tenant: { id: string; slug: string; name: string } | null;
+  /** Modules this user's tenant can use (core + licensed). Empty for platform admins. */
+  modules: string[];
+}

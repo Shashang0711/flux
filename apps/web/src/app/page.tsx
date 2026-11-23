@@ -1,7 +1,7 @@
-import type { HealthStatus } from '@flux/shared';
+import { MODULES, type HealthStatus } from '@flux/shared';
 import { LogoutButton } from '@/components/logout-button';
 import { ApiError, apiFetch } from '@/lib/api';
-import { requireUser } from '@/lib/server-api';
+import { requireSession } from '@/lib/server-api';
 import styles from './page.module.css';
 
 async function loadHealth(): Promise<{ health?: HealthStatus; error?: string }> {
@@ -14,7 +14,7 @@ async function loadHealth(): Promise<{ health?: HealthStatus; error?: string }> 
 }
 
 export default async function HomePage() {
-  const user = await requireUser();
+  const { user, tenant, modules } = await requireSession();
   const { health, error } = await loadHealth();
 
   return (
@@ -35,9 +35,27 @@ export default async function HomePage() {
           </span>
         </div>
         <div className={styles.row}>
-          <span className={styles.label}>Access</span>
-          <span>{user.isSystemAdmin ? 'System administrator' : 'Standard user'}</span>
+          <span className={styles.label}>Organisation</span>
+          <span>{tenant ? tenant.name : 'FLUX platform'}</span>
         </div>
+        <div className={styles.row}>
+          <span className={styles.label}>Access</span>
+          <span>
+            {user.isPlatformAdmin
+              ? 'Platform administrator'
+              : user.isTenantAdmin
+                ? 'Organisation administrator'
+                : 'Standard user'}
+          </span>
+        </div>
+        {tenant && (
+          <div className={styles.row}>
+            <span className={styles.label}>Modules</span>
+            <span className={styles.modules}>
+              {modules.map((key) => MODULES.find((m) => m.key === key)?.name ?? key).join(', ')}
+            </span>
+          </div>
+        )}
       </section>
 
       <section className={styles.card} aria-label="System status">

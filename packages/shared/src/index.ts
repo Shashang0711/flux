@@ -3,3 +3,5 @@ export * from './api/errors';
 export * from './api/health';
 export * from './api/pagination';
 export * from './identity/users';
+export * from './tenancy/modules';
+export * from './tenancy/tenants';

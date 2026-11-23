@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Prisma } from '@prisma/client';
+import { effectiveModules } from '@flux/shared';
 import type { Env } from '../../config/env';
 import { PrismaService } from '../../database/prisma.service';
 import type { AuthUser } from './auth.types';
@@ -59,17 +60,30 @@ export class SessionService {
     const session = await this.prisma.session.findUnique({
       where: { tokenHash: hashToken(token) },
       include: {
-        user: { select: { id: true, email: true, name: true, status: true, isSystemAdmin: true } },
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            status: true,
+            tenantId: true,
+            isPlatformAdmin: true,
+            isTenantAdmin: true,
+            tenant: { select: { status: true, modules: { select: { moduleKey: true } } } },
+          },
+        },
       },
     });
     if (!session) return null;
+    const { user } = session;
 
     const now = Date.now();
     const expired =
       session.revokedAt !== null ||
       session.expiresAt.getTime() <= now ||
       session.lastSeenAt.getTime() + this.idleMs <= now;
-    if (expired || session.user.status !== 'ACTIVE') return null;
+    const tenantSuspended = user.tenant !== null && user.tenant.status !== 'ACTIVE';
+    if (expired || user.status !== 'ACTIVE' || tenantSuspended) return null;
 
     if (now - session.lastSeenAt.getTime() > TOUCH_INTERVAL_MS) {
       await this.prisma.session.update({
@@ -77,12 +91,31 @@ export class SessionService {
         data: { lastSeenAt: new Date(now) },
       });
     }
-    return { sessionId: session.id, user: session.user };
+    return {
+      sessionId: session.id,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        tenantId: user.tenantId,
+        isPlatformAdmin: user.isPlatformAdmin,
+        isTenantAdmin: user.isTenantAdmin,
+        modules: user.tenant ? effectiveModules(user.tenant.modules.map((m) => m.moduleKey)) : [],
+      },
+    };
   }
 
   async revokeByToken(token: string): Promise<void> {
     await this.prisma.session.updateMany({
       where: { tokenHash: hashToken(token), revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
+  /** Signs out every user of a tenant (e.g. when the tenant is suspended). System use only. */
+  async revokeAllForTenant(tenantId: string, tx?: Tx): Promise<void> {
+    await (tx ?? this.prisma).session.updateMany({
+      where: { user: { tenantId }, revokedAt: null },
       data: { revokedAt: new Date() },
     });
   }
