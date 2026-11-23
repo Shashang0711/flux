@@ -13,6 +13,8 @@ export interface AuthUser {
   modules: ModuleKey[];
   /** What the user may do, from their active roles. Empty for platform admins. */
   access: SessionAccess;
+  /** The current request (for the audit trail). Set by AuthGuard. */
+  request?: { id?: string; ip?: string };
 }
 
 /** Tenant context for tenant-scoped handlers; see @CurrentTenant(). */

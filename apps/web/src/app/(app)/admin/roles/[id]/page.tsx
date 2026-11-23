@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import type { RoleDto, RoleUserDto, UserDto } from '@flux/shared';
+import type { AuditLogDto, RoleDto, RoleUserDto, UserDto } from '@flux/shared';
+import { AuditTable } from '@/components/audit-table';
 import { ActiveBadge, Badge } from '@/components/badges';
 import { Forbidden } from '@/components/forbidden';
 import { PageHeader } from '@/components/page-header';
@@ -25,6 +26,7 @@ const TABS = [
   { key: 'modules', label: 'Module Access' },
   { key: 'permissions', label: 'Role Permissions' },
   { key: 'users', label: 'Assigned Users' },
+  { key: 'audit', label: 'Audit', permission: 'audit.view' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
@@ -38,10 +40,11 @@ export default async function RolePage({
   const { session, allowed } = await sessionWithPermission('role.view');
   if (!allowed) return <Forbidden />;
   const { id } = await params;
-  const requested = readParams(await searchParams, ['tab'] as const).tab;
-  const tab: TabKey = TABS.some((t) => t.key === requested) ? (requested as TabKey) : 'general';
-
   const permissions = session.access.permissions;
+  const tabs = TABS.filter((t) => !('permission' in t) || permissions.includes(t.permission));
+  const requested = readParams(await searchParams, ['tab'] as const).tab;
+  const tab: TabKey = tabs.some((t) => t.key === requested) ? (requested as TabKey) : 'general';
+
   const canManage = permissions.includes('role.manage');
   const canAssign = permissions.includes('user.manage');
 
@@ -49,6 +52,10 @@ export default async function RolePage({
   const { data: catalogue } = await loadOrNotFound<AccessCatalogue>('/access/catalogue');
   const editable = canManage && !role.isSystem;
 
+  const history =
+    tab === 'audit'
+      ? (await loadOrNotFound<AuditLogDto[]>(`/audit-logs?entityId=${id}&pageSize=50`)).data
+      : [];
   let assigned: RoleUserDto[] = [];
   let allUsers: UserDto[] = [];
   if (tab === 'users') {
@@ -80,7 +87,7 @@ export default async function RolePage({
         </p>
       )}
       <nav className={styles.tabs} aria-label="Role sections">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <Link
             key={t.key}
             href={`/admin/roles/${id}?tab=${t.key}`}
@@ -110,6 +117,7 @@ export default async function RolePage({
             canAssign={canAssign}
           />
         )}
+        {tab === 'audit' && <AuditTable entries={history} />}
       </section>
     </>
   );

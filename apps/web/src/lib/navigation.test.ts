@@ -35,10 +35,11 @@ describe('visibleNavigation', () => {
 
   it('shows administration screens by permission', () => {
     expect(labels(session({ permissions: ['user.view'] }))).toEqual(['Dashboard', 'Users']);
-    expect(labels(session({ permissions: ['user.view', 'role.view'] }))).toEqual([
+    expect(labels(session({ permissions: ['user.view', 'role.view', 'audit.view'] }))).toEqual([
       'Dashboard',
       'Users',
       'Roles',
+      'Audit log',
     ]);
   });
 

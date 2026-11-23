@@ -86,6 +86,6 @@ export class AuthController {
     @CurrentSessionId() sessionId: string,
     @Body(new ZodValidationPipe(changePasswordSchema)) body: ChangePasswordRequest,
   ): Promise<void> {
-    await this.auth.changePassword(user.id, sessionId, body);
+    await this.auth.changePassword(user, sessionId, body);
   }
 }

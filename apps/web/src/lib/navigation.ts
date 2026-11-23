@@ -29,6 +29,7 @@ export const NAVIGATION: NavGroup[] = [
     items: [
       { href: '/admin/users', label: 'Users', permission: 'user.view' },
       { href: '/admin/roles', label: 'Roles', permission: 'role.view' },
+      { href: '/admin/audit', label: 'Audit log', permission: 'audit.view' },
     ],
   },
 ];

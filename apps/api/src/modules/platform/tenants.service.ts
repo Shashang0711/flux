@@ -12,6 +12,8 @@ import type { createTenantSchema } from '@flux/shared';
 import { AppException } from '../../common/errors/app.exception';
 import { Paginated, toSkipTake } from '../../common/pagination/pagination';
 import { PrismaService } from '../../database/prisma.service';
+import { compactChanges, fieldChanges, listChange, recordAudit } from '../audit/audit';
+import type { AuthUser } from '../auth/auth.types';
 import { hashPassword } from '../auth/password';
 import { SessionService } from '../auth/session.service';
 import { toTenantDto } from './tenant.mapper';
@@ -67,7 +69,7 @@ export class TenantsService {
   }
 
   /** Creates the tenant, its licensed modules and its first administrator in one transaction. */
-  async create(input: z.output<typeof createTenantSchema>): Promise<TenantDto> {
+  async create(input: z.output<typeof createTenantSchema>, actor: AuthUser): Promise<TenantDto> {
     const passwordHash = await hashPassword(input.admin.password);
     try {
       const tenant = await this.prisma.$transaction(async (tx) => {
@@ -89,7 +91,7 @@ export class TenantsService {
             isSystem: true,
           },
         });
-        await tx.user.create({
+        const admin = await tx.user.create({
           data: {
             tenantId: created.id,
             email: input.admin.email,
@@ -98,6 +100,28 @@ export class TenantsService {
             // tenant_id comes from the user through the composite relation.
             userRoles: { create: { roleId: adminRole.id } },
           },
+        });
+        await recordAudit(tx, {
+          tenantId: created.id,
+          actor,
+          action: 'tenant.created',
+          entity: { type: 'tenant', id: created.id, label: created.name },
+          relatedIds: [admin.id],
+          changes: compactChanges({
+            ...fieldChanges(null, created, ['name', 'slug']),
+            modules: listChange([], input.modules),
+          }),
+        });
+        await recordAudit(tx, {
+          tenantId: created.id,
+          actor,
+          action: 'user.created',
+          entity: { type: 'user', id: admin.id, label: admin.name },
+          relatedIds: [adminRole.id],
+          changes: compactChanges({
+            ...fieldChanges(null, admin, ['name', 'email']),
+            roles: listChange([], [adminRole.name]),
+          }),
         });
         return tx.tenant.findUniqueOrThrow({ where: { id: created.id }, include: WITH_MODULES });
       });
@@ -119,21 +143,50 @@ export class TenantsService {
   }
 
   /** Suspending a tenant signs out all of its users immediately. */
-  async update(id: string, input: UpdateTenantRequest): Promise<TenantDto> {
+  async update(id: string, input: UpdateTenantRequest, actor: AuthUser): Promise<TenantDto> {
     const tenant = await this.prisma.$transaction(async (tx) => {
-      const { count } = await tx.tenant.updateMany({ where: { id }, data: input });
-      if (count === 0) throw AppException.notFound('Tenant', id);
+      const before = await tx.tenant.findUnique({ where: { id } });
+      if (!before) throw AppException.notFound('Tenant', id);
+      const updated = await tx.tenant.update({ where: { id }, data: input, include: WITH_MODULES });
       if (input.status === 'SUSPENDED') await this.sessions.revokeAllForTenant(id, tx);
-      return tx.tenant.findUniqueOrThrow({ where: { id }, include: WITH_MODULES });
+
+      const changes = fieldChanges(before, updated, ['name', 'status']);
+      if (Object.keys(changes).length > 0) {
+        await recordAudit(tx, {
+          tenantId: id,
+          actor,
+          action: changes.status
+            ? updated.status === 'SUSPENDED'
+              ? 'tenant.suspended'
+              : 'tenant.reactivated'
+            : 'tenant.updated',
+          entity: { type: 'tenant', id, label: updated.name },
+          changes,
+        });
+      }
+      return updated;
     });
     return toTenantDto(tenant);
   }
 
   /** Replaces the tenant's licensed optional modules. */
-  async setModules(id: string, modules: ModuleKey[]): Promise<TenantDto> {
+  async setModules(id: string, modules: ModuleKey[], actor: AuthUser): Promise<TenantDto> {
     const tenant = await this.prisma.$transaction(async (tx) => {
-      const exists = await tx.tenant.findUnique({ where: { id }, select: { id: true } });
-      if (!exists) throw AppException.notFound('Tenant', id);
+      const existing = await tx.tenant.findUnique({ where: { id }, include: WITH_MODULES });
+      if (!existing) throw AppException.notFound('Tenant', id);
+      const change = listChange(
+        existing.modules.map((m) => m.moduleKey),
+        modules,
+      );
+      if (change) {
+        await recordAudit(tx, {
+          tenantId: id,
+          actor,
+          action: 'tenant.modules_changed',
+          entity: { type: 'tenant', id, label: existing.name },
+          changes: { modules: change },
+        });
+      }
       await tx.tenantModule.deleteMany({ where: { tenantId: id, moduleKey: { notIn: modules } } });
       await tx.tenantModule.createMany({
         data: modules.map((moduleKey) => ({ tenantId: id, moduleKey })),

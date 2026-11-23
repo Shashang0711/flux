@@ -8,6 +8,7 @@ import {
 } from '@flux/shared';
 import { AppException } from '../../common/errors/app.exception';
 import { PrismaService } from '../../database/prisma.service';
+import { recordAudit } from '../audit/audit';
 import { USER_ROLES_INCLUDE, toUserDto } from '../users/user.mapper';
 import type { AuthUser } from './auth.types';
 import { hashPassword, verifyAgainstDummy, verifyPassword } from './password';
@@ -78,10 +79,11 @@ export class AuthService {
 
   /** Changes the caller's password and signs out their other sessions. */
   async changePassword(
-    userId: string,
+    actor: AuthUser,
     currentSessionId: string,
     body: ChangePasswordRequest,
   ): Promise<void> {
+    const userId = actor.id;
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || !(await verifyPassword(user.passwordHash, body.currentPassword))) {
       throw new AppException(
@@ -95,6 +97,15 @@ export class AuthService {
     await this.prisma.$transaction(async (tx) => {
       await tx.user.update({ where: { id: userId }, data: { passwordHash } });
       await this.sessions.revokeAllForUser(userId, { except: currentSessionId, tx });
+      // Platform admins belong to no tenant, so there is no tenant log to write to.
+      if (user.tenantId) {
+        await recordAudit(tx, {
+          tenantId: user.tenantId,
+          actor,
+          action: 'user.password_changed',
+          entity: { type: 'user', id: userId, label: user.name },
+        });
+      }
     });
   }
 

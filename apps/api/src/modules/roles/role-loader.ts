@@ -32,7 +32,7 @@ export async function loadRolesForAssignment(
   tx: TenantTx,
   roleIds: string[],
   path = 'roleIds',
-): Promise<(RoleWithGrantRows & { id: string })[]> {
+): Promise<(RoleWithGrantRows & { id: string; name: string })[]> {
   if (roleIds.length === 0) return [];
   const roles = await tx.role.findMany({
     where: { id: { in: roleIds } },

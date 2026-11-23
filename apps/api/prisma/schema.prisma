@@ -40,6 +40,7 @@ model Tenant {
   roleModules     RoleModule[]
   rolePermissions RolePermission[]
   userRoles       UserRole[]
+  auditLogs       AuditLog[]
 
   @@map("tenants")
 }
@@ -198,4 +199,44 @@ model UserRole {
   @@index([roleId])
   @@index([tenantId])
   @@map("user_roles")
+}
+
+// ─── Audit log (M3d) ────────────────────────────────────────────────────────
+
+enum AuditActorType {
+  USER
+  PLATFORM_ADMIN
+  SYSTEM
+}
+
+/// Append-only record of significant changes. Written in the same transaction as the change.
+/// A trigger rejects UPDATE and DELETE for everyone; the app role may only SELECT and INSERT.
+model AuditLog {
+  id          String         @id @default(uuid()) @db.Uuid
+  tenantId    String         @map("tenant_id") @db.Uuid
+  occurredAt  DateTime       @default(now()) @map("occurred_at")
+  /// Snapshot of the actor; no foreign key, so history never depends on other rows.
+  actorType   AuditActorType @map("actor_type")
+  actorId     String?        @map("actor_id") @db.Uuid
+  actorName   String?        @map("actor_name")
+  actorEmail  String?        @map("actor_email")
+  /// Dotted action key, e.g. "role.permissions_changed" (labels in @flux/shared).
+  action      String
+  entityType  String         @map("entity_type")
+  entityId    String         @map("entity_id") @db.Uuid
+  /// Name of the entity at the time, so entries stay readable after renames.
+  entityLabel String?        @map("entity_label")
+  /// Other entities affected (e.g. the roles in a user's role change), for per-entity history.
+  relatedIds  String[]       @default([]) @map("related_ids") @db.Uuid
+  /// { field: { from, to } } and/or { added: [...], removed: [...] }. Never secrets.
+  changes     Json?
+  requestId   String?        @map("request_id")
+  ipAddress   String?        @map("ip_address")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, occurredAt(sort: Desc)])
+  @@index([entityId])
+  @@index([relatedIds], type: Gin)
+  @@map("audit_logs")
 }

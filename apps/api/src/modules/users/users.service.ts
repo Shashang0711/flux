@@ -11,6 +11,7 @@ import type { z } from 'zod';
 import { AppException } from '../../common/errors/app.exception';
 import { Paginated, toSkipTake } from '../../common/pagination/pagination';
 import { TenantDb, type TenantTx } from '../../database/tenant-db.service';
+import { compactChanges, fieldChanges, listChange, recordAudit } from '../audit/audit';
 import type { AuthUser, TenantContext } from '../auth/auth.types';
 import { hashPassword } from '../auth/password';
 import { SessionService } from '../auth/session.service';
@@ -28,9 +29,12 @@ const EMAIL_TAKEN = () =>
     fields: [{ path: 'email', message: 'Email is already in use' }],
   });
 
+const AUDITED_FIELDS = ['name', 'email', 'status'] as const;
+
 /**
  * Users of the caller's tenant. Every query runs through TenantDb, so row-level security
- * limits it to that tenant regardless of the `where` clauses below.
+ * limits it to that tenant regardless of the `where` clauses below. Every change is audited
+ * in the same transaction.
  */
 @Injectable()
 export class UsersService {
@@ -82,7 +86,7 @@ export class UsersService {
     try {
       const user = await this.db.run(ctx.tenantId, async (tx) => {
         await this.assertCanAssign(tx, input.roleIds, actor);
-        return tx.user.create({
+        const created = await tx.user.create({
           data: {
             tenantId: ctx.tenantId,
             email: input.email,
@@ -95,6 +99,21 @@ export class UsersService {
           },
           include: USER_ROLES_INCLUDE,
         });
+        await recordAudit(tx, {
+          tenantId: ctx.tenantId,
+          actor,
+          action: 'user.created',
+          entity: { type: 'user', id: created.id, label: created.name },
+          relatedIds: input.roleIds,
+          changes: compactChanges({
+            ...fieldChanges(null, created, ['name', 'email']),
+            roles: listChange(
+              [],
+              created.userRoles.map((ur) => ur.role.name),
+            ),
+          }),
+        });
+        return created;
       });
       return toUserDto(user);
     } catch (error) {
@@ -114,7 +133,9 @@ export class UsersService {
     }
     try {
       const user = await this.db.run(ctx.tenantId, async (tx) => {
-        if (input.status === 'DISABLED') {
+        const before = await tx.user.findUnique({ where: { id } });
+        if (!before) throw AppException.notFound('User', id);
+        if (input.status === 'DISABLED' && before.status !== 'DISABLED') {
           await assertAdministratorRemains(tx, { removingUserIds: [id] });
         }
         const updated = await tx.user.update({
@@ -123,6 +144,21 @@ export class UsersService {
           include: USER_ROLES_INCLUDE,
         });
         if (input.status === 'DISABLED') await this.sessions.revokeAllForUser(id, { tx });
+
+        const changes = fieldChanges(before, updated, AUDITED_FIELDS);
+        if (Object.keys(changes).length > 0) {
+          await recordAudit(tx, {
+            tenantId: ctx.tenantId,
+            actor,
+            action: changes.status
+              ? updated.status === 'DISABLED'
+                ? 'user.disabled'
+                : 'user.enabled'
+              : 'user.updated',
+            entity: { type: 'user', id, label: updated.name },
+            changes,
+          });
+        }
         return updated;
       });
       return toUserDto(user);
@@ -146,21 +182,18 @@ export class UsersService {
     actor: AuthUser,
   ): Promise<UserDto> {
     const user = await this.db.run(ctx.tenantId, async (tx) => {
-      const existing = await tx.user.findUnique({ where: { id }, include: { userRoles: true } });
+      const existing = await tx.user.findUnique({ where: { id }, include: USER_ROLES_INCLUDE });
       if (!existing) throw AppException.notFound('User', id);
 
       // Validate the request as sent, so error paths point at the caller's roleIds.
-      await loadRolesForAssignment(tx, roleIds);
-      const current = existing.userRoles.map((ur) => ur.roleId);
-      const added = roleIds.filter((r) => !current.includes(r));
-      const removed = current.filter((r) => !roleIds.includes(r));
+      const requested = await loadRolesForAssignment(tx, roleIds);
+      const current = existing.userRoles.map((ur) => ur.role);
+      const added = roleIds.filter((r) => !current.some((c) => c.id === r));
+      const removed = current.filter((c) => !roleIds.includes(c.id)).map((c) => c.id);
       await this.assertCanAssign(tx, [...added, ...removed], actor);
 
-      const removedRoles = await tx.role.findMany({
-        where: { id: { in: removed }, isSystem: true },
-        select: { id: true },
-      });
-      if (removedRoles.length > 0) await assertAdministratorRemains(tx, { removingUserIds: [id] });
+      const removedSystem = await tx.role.count({ where: { id: { in: removed }, isSystem: true } });
+      if (removedSystem > 0) await assertAdministratorRemains(tx, { removingUserIds: [id] });
 
       await tx.userRole.deleteMany({ where: { userId: id, roleId: { in: removed } } });
       await tx.userRole.createMany({
@@ -171,6 +204,21 @@ export class UsersService {
           assignedById: actor.id,
         })),
       });
+
+      const nameOf = (roleId: string) =>
+        requested.find((r) => r.id === roleId)?.name ??
+        current.find((r) => r.id === roleId)?.name ??
+        roleId;
+      if (added.length > 0 || removed.length > 0) {
+        await recordAudit(tx, {
+          tenantId: ctx.tenantId,
+          actor,
+          action: 'user.roles_changed',
+          entity: { type: 'user', id, label: existing.name },
+          relatedIds: [...added, ...removed],
+          changes: { roles: { added: added.map(nameOf), removed: removed.map(nameOf) } },
+        });
+      }
       return tx.user.findUniqueOrThrow({ where: { id }, include: USER_ROLES_INCLUDE });
     });
     return toUserDto(user);
@@ -188,9 +236,17 @@ export class UsersService {
     }
     const passwordHash = await hashPassword(password);
     await this.db.run(ctx.tenantId, async (tx) => {
-      const { count } = await tx.user.updateMany({ where: { id }, data: { passwordHash } });
-      if (count === 0) throw AppException.notFound('User', id);
+      const user = await tx.user.findUnique({ where: { id }, select: { name: true } });
+      if (!user) throw AppException.notFound('User', id);
+      await tx.user.update({ where: { id }, data: { passwordHash } });
       await this.sessions.revokeAllForUser(id, { tx });
+      // The event only: never the password or its hash.
+      await recordAudit(tx, {
+        tenantId: ctx.tenantId,
+        actor,
+        action: 'user.password_reset',
+        entity: { type: 'user', id, label: user.name },
+      });
     });
   }
 
