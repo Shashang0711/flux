@@ -1,6 +1,6 @@
 import { INestApplication, type ModuleMetadata } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import type { Tenant } from '@prisma/client';
+import type { Portal, Tenant } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { PrismaService } from '../src/database/prisma.service';
@@ -31,23 +31,58 @@ export async function resetDatabase(prisma: PrismaService): Promise<void> {
   const db = rows[0]?.db ?? '';
   if (!db.endsWith('_test')) throw new Error(`Refusing to truncate non-test database "${db}"`);
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "sessions", "users", "tenant_modules", "tenants" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "user_roles", "role_permissions", "role_modules", "role_portals", "roles", ' +
+      '"sessions", "users", "tenant_modules", "tenants" RESTART IDENTITY CASCADE',
   );
 }
 
 export const TEST_PASSWORD = 'correct-horse-battery';
 
-/** Creates a tenant directly in the database (system access). */
+/**
+ * Creates a tenant directly in the database (system access), with its built-in
+ * Administrator role, like the platform API does.
+ */
 export async function createTenant(
   prisma: PrismaService,
   data: { slug: string; name?: string; modules?: string[]; status?: 'ACTIVE' | 'SUSPENDED' },
-): Promise<Tenant> {
-  return prisma.tenant.create({
+): Promise<Tenant & { adminRoleId: string }> {
+  const tenant = await prisma.tenant.create({
     data: {
       slug: data.slug,
       name: data.name ?? data.slug,
       status: data.status ?? 'ACTIVE',
       modules: { create: (data.modules ?? []).map((moduleKey) => ({ moduleKey })) },
+    },
+  });
+  const role = await prisma.role.create({
+    data: { tenantId: tenant.id, name: 'Administrator', defaultPortal: 'ADMIN', isSystem: true },
+  });
+  return { ...tenant, adminRoleId: role.id };
+}
+
+/** Creates a custom role directly in the database (system access). */
+export async function createRole(
+  prisma: PrismaService,
+  data: {
+    tenantId: string;
+    name: string;
+    portals?: Portal[];
+    modules?: string[];
+    permissions?: string[];
+    isActive?: boolean;
+  },
+) {
+  const portals = data.portals ?? ['ADMIN'];
+  return prisma.role.create({
+    data: {
+      tenantId: data.tenantId,
+      name: data.name,
+      defaultPortal: portals[0]!,
+      isActive: data.isActive ?? true,
+      // tenant_id of child rows comes from the role through the composite relation.
+      portals: { create: portals.map((portal) => ({ portal })) },
+      modules: { create: (data.modules ?? []).map((moduleKey) => ({ moduleKey })) },
+      permissions: { create: (data.permissions ?? []).map((permissionKey) => ({ permissionKey })) },
     },
   });
 }
@@ -63,7 +98,8 @@ export async function createUser(
     name?: string;
     tenantId?: string;
     isPlatformAdmin?: boolean;
-    isTenantAdmin?: boolean;
+    /** Role ids to assign (tenant users only). */
+    roleIds?: string[];
     status?: 'ACTIVE' | 'DISABLED';
   },
 ) {
@@ -73,9 +109,9 @@ export async function createUser(
       name: data.name ?? data.email.split('@')[0]!,
       tenantId: data.isPlatformAdmin ? null : data.tenantId,
       isPlatformAdmin: data.isPlatformAdmin ?? false,
-      isTenantAdmin: data.isTenantAdmin ?? false,
       status: data.status ?? 'ACTIVE',
       passwordHash: await hashPassword(TEST_PASSWORD),
+      userRoles: { create: (data.roleIds ?? []).map((roleId) => ({ roleId })) },
     },
   });
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { SessionAccess } from '../access/roles';
 
 /** Name of the httpOnly cookie carrying the session token. */
 export const SESSION_COOKIE_NAME = 'flux_session';
@@ -18,8 +19,8 @@ export interface UserDto {
   status: UserStatus;
   /** Platform operator (no tenant). */
   isPlatformAdmin: boolean;
-  /** Temporary until M3b roles: manages users of their own tenant. */
-  isTenantAdmin: boolean;
+  /** Roles assigned to the user (tenant users only). */
+  roles: { id: string; name: string }[];
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -58,7 +59,11 @@ export const createUserSchema = z.object({
   email: emailSchema,
   name: nameSchema,
   password: passwordSchema,
-  isTenantAdmin: z.boolean().default(false),
+  roleIds: z
+    .array(z.uuid())
+    .max(100)
+    .default([])
+    .transform((ids) => [...new Set(ids)]),
 });
 export type CreateUserRequest = z.input<typeof createUserSchema>;
 
@@ -67,7 +72,6 @@ export const updateUserSchema = z
     email: emailSchema,
     name: nameSchema,
     status: z.enum([UserStatus.ACTIVE, UserStatus.DISABLED]),
-    isTenantAdmin: z.boolean(),
   })
   .partial()
   .refine((value) => Object.keys(value).length > 0, { message: 'No fields to update' });
@@ -88,6 +92,8 @@ export interface SessionInfo {
   user: UserDto;
   /** Null for platform administrators. */
   tenant: { id: string; slug: string; name: string } | null;
-  /** Modules this user's tenant can use (core + licensed). Empty for platform admins. */
+  /** Modules the tenant can use (core + licensed). Empty for platform admins. */
   modules: string[];
+  /** What this user may do, from their roles. Empty for platform admins. */
+  access: SessionAccess;
 }

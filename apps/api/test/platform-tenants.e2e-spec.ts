@@ -48,7 +48,11 @@ describe('Platform tenant management (e2e)', () => {
   describe('access control', () => {
     it('is limited to platform admins', async () => {
       const t = await createTenant(prisma, { slug: 'acme' });
-      await createUser(prisma, { email: 'admin@acme.test', tenantId: t.id, isTenantAdmin: true });
+      await createUser(prisma, {
+        email: 'admin@acme.test',
+        tenantId: t.id,
+        roleIds: [t.adminRoleId],
+      });
       const tenantAdmin = await loginCookie(app, 'admin@acme.test');
 
       await api().get('/api/v1/platform/tenants').expect(401);
@@ -74,9 +78,14 @@ describe('Platform tenant management (e2e)', () => {
       const cookie = await loginCookie(app, 'owner@oceanic.test', 'oceanic-admin-1');
       const me = await api().get('/api/v1/auth/me').set('Cookie', cookie).expect(200);
       expect(me.body.data).toMatchObject({
-        user: { isTenantAdmin: true, isPlatformAdmin: false },
+        user: { isPlatformAdmin: false, roles: [{ name: 'Administrator' }] },
         tenant: { slug: 'oceanic-testing' },
         modules: ['administration', 'samples', 'reports'],
+        access: {
+          defaultPortal: 'ADMIN',
+          portals: ['ADMIN', 'LAB'],
+          modules: ['administration', 'samples', 'reports'],
+        },
       });
     });
 

@@ -1,11 +1,11 @@
 import { ExecutionContext, SetMetadata, createParamDecorator } from '@nestjs/common';
-import type { ModuleKey } from '@flux/shared';
+import type { ModuleKey, PermissionKey } from '@flux/shared';
 import { AppException } from '../../common/errors/app.exception';
 import type { AuthUser, AuthenticatedRequest, TenantContext } from './auth.types';
 
 export const IS_PUBLIC_KEY = 'flux:public';
 export const REQUIRES_PLATFORM_ADMIN_KEY = 'flux:requires-platform-admin';
-export const REQUIRES_TENANT_ADMIN_KEY = 'flux:requires-tenant-admin';
+export const REQUIRED_PERMISSIONS_KEY = 'flux:required-permissions';
 export const REQUIRED_MODULE_KEY = 'flux:required-module';
 
 type Decorator = MethodDecorator & ClassDecorator;
@@ -17,10 +17,11 @@ export const Public = (): Decorator => SetMetadata(IS_PUBLIC_KEY, true);
 export const RequirePlatformAdmin = (): Decorator => SetMetadata(REQUIRES_PLATFORM_ADMIN_KEY, true);
 
 /**
- * Administrators of the caller's tenant only.
- * Temporary until M3b, where it is replaced by role permissions.
+ * The caller must hold ALL of these permissions (from their active roles, limited to modules
+ * licensed to their tenant). Method-level overrides class-level.
  */
-export const RequireTenantAdmin = (): Decorator => SetMetadata(REQUIRES_TENANT_ADMIN_KEY, true);
+export const RequirePermission = (...permissions: [PermissionKey, ...PermissionKey[]]): Decorator =>
+  SetMetadata(REQUIRED_PERMISSIONS_KEY, permissions);
 
 /** The caller's tenant must be licensed for this module (core modules always pass). */
 export const RequireModule = (module: ModuleKey): Decorator =>

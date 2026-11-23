@@ -56,7 +56,8 @@ the email does not exist yet; re-running it never changes an existing account. C
 after first sign-in (`POST /api/v1/auth/change-password`).
 
 The platform admin then creates tenants, each with its first tenant admin, via
-`POST /api/v1/platform/tenants`. Tenant admins manage their own organisation's users.
+`POST /api/v1/platform/tenants`. That first user holds the tenant's built-in Administrator role
+and manages the organisation's users and roles from there.
 
 ## Scripts (from the repo root)
 
@@ -99,8 +100,8 @@ infrastructure in `apps/api/src/common`.
   `SESSION_TTL_HOURS`. Disabling a user or resetting their password revokes their sessions at once.
 - **Deny by default.** A global guard requires a valid session on every route. Mark exceptions
   with `@Public()`. Get the caller with `@CurrentUser()`.
-- **`@RequirePlatformAdmin()`** guards platform endpoints. **`@RequireTenantAdmin()`** (tenant user
-  management) is temporary; M3b replaces it with role permissions.
+- **`@RequirePlatformAdmin()`** guards platform endpoints. **`@RequirePermission('x.y')`** guards
+  tenant endpoints (see "Roles and permissions").
 - **Passwords** are hashed with argon2id. The policy lives in `@flux/shared` so the API and forms
   agree. Login answers "Invalid email or password" for every failure, and is rate-limited per IP
   (`LOGIN_RATE_LIMIT`) and per account (`LOGIN_ACCOUNT_RATE_LIMIT`).
@@ -135,7 +136,9 @@ Postgres RLS, not application code, guarantees a tenant only sees its own rows:
 2. `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` and `CREATE POLICY tenant_isolation ON ...
 USING (tenant_id = app_current_tenant()) WITH CHECK (tenant_id = app_current_tenant())`;
 3. `GRANT` to `flux_app` only the privileges the app needs (usually no `DELETE`);
-4. be accessed only through `TenantDb.run`, and get an isolation test.
+4. if it references other tenant-owned rows, use a composite foreign key `(…_id, tenant_id)` to
+   that table's `(id, tenant_id)`, so a row can never link records of two tenants;
+5. be accessed only through `TenantDb.run`, and get an isolation test.
 
 **Modules.** The catalogue is `MODULES` in `@flux/shared`. Core modules are always available;
 optional ones are licensed per tenant by the platform admin. Guard endpoints with
@@ -148,6 +151,25 @@ optional ones are licensed per tenant by the platform admin. Guard endpoints wit
 migrating role. The API must connect as the role that owns the tables, so system queries bypass
 RLS while tenant queries switch to `flux_app`.
 
+## Roles and permissions
+
+- **Catalogue in code.** `PERMISSIONS` and `PORTALS` in `@flux/shared` (e.g. `vessel.view`,
+  `sample.register`, `report.publish`), each permission belonging to a module. Tenants combine
+  them into their own roles; they cannot invent keys. Keys are stored in the database: add or
+  retire, never rename.
+- **Roles** (per tenant) have the tabs from the specification: Portal Access, Module Access,
+  Role Permissions and Assigned Users, and can be cloned with copy options. Roles are deactivated,
+  never deleted.
+- **Effective access** is the union over the user's active roles. A permission counts only if its
+  module is granted by the same role **and** licensed to the tenant; "manage" implies "view".
+  It is computed on every request, so changes take effect immediately.
+- **Administrator** is a built-in role in every tenant: everything licensed, all internal portals.
+  It cannot be edited or deactivated, and the tenant always keeps at least one active user in it.
+- **No privilege escalation.** Nobody can grant permissions they do not hold, whether by editing a
+  role or by assigning one (including the Administrator role).
+- Guard endpoints with `@RequirePermission('<key>')` (all listed keys required). Combine with
+  `@RequireModule` where the whole controller belongs to an optional module.
+
 ### Endpoints
 
 | Method and path                            | Access         | Purpose                                                     |
@@ -156,11 +178,24 @@ RLS while tenant queries switch to `flux_app`.
 | `POST /api/v1/auth/logout`                 | Public         | Revoke the session and clear the cookie                     |
 | `GET /api/v1/auth/me`                      | Signed in      | Current user                                                |
 | `POST /api/v1/auth/change-password`        | Signed in      | Change own password; ends other sessions                    |
-| `GET /api/v1/users`                        | Tenant admin   | List own tenant's users (`page`, `pageSize`, `q`, `status`) |
-| `POST /api/v1/users`                       | Tenant admin   | Create a user in own tenant                                 |
-| `GET /api/v1/users/:id`                    | Tenant admin   | Read user                                                   |
-| `PATCH /api/v1/users/:id`                  | Tenant admin   | Update name, email, status or admin flag                    |
-| `POST /api/v1/users/:id/reset-password`    | Tenant admin   | Set a new password; ends their sessions                     |
+| `GET /api/v1/users`                        | `user.view`    | List own tenant's users (`page`, `pageSize`, `q`, `status`) |
+| `POST /api/v1/users`                       | `user.manage`  | Create a user (optionally with `roleIds`)                   |
+| `GET /api/v1/users/:id`                    | `user.view`    | Read user                                                   |
+| `PATCH /api/v1/users/:id`                  | `user.manage`  | Update name, email or status                                |
+| `PUT /api/v1/users/:id/roles`              | `user.manage`  | Replace the user's roles                                    |
+| `POST /api/v1/users/:id/reset-password`    | `user.manage`  | Set a new password; ends their sessions                     |
+| `GET /api/v1/access/catalogue`             | `role.view`    | Licensed modules, portals and permissions                   |
+| `GET /api/v1/roles`                        | `role.view`    | List roles (`q`, `isActive`)                                |
+| `POST /api/v1/roles`                       | `role.manage`  | Create role with portals, modules, permissions              |
+| `GET /api/v1/roles/:id`                    | `role.view`    | Read role and its access                                    |
+| `PATCH /api/v1/roles/:id`                  | `role.manage`  | Name, description, default portal, active                   |
+| `PUT /api/v1/roles/:id/portals`            | `role.manage`  | Portal Access tab                                           |
+| `PUT /api/v1/roles/:id/modules`            | `role.manage`  | Module Access tab                                           |
+| `PUT /api/v1/roles/:id/permissions`        | `role.manage`  | Role Permissions tab                                        |
+| `POST /api/v1/roles/:id/clone`             | `role.manage`  | Clone with copy options                                     |
+| `GET /api/v1/roles/:id/users`              | `role.view`    | Assigned Users tab                                          |
+| `POST /api/v1/roles/:id/users`             | `user.manage`  | Assign users                                                |
+| `DELETE /api/v1/roles/:id/users/:userId`   | `user.manage`  | Unassign a user                                             |
 | `GET /api/v1/platform/modules`             | Platform admin | Module catalogue                                            |
 | `GET /api/v1/platform/tenants`             | Platform admin | List tenants (`q`, `status`)                                |
 | `POST /api/v1/platform/tenants`            | Platform admin | Create tenant + modules + first admin                       |

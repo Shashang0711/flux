@@ -17,6 +17,7 @@ describe('Users (e2e, tenant-scoped)', () => {
   let tenantId: string;
   let adminCookie: string;
   let adminId: string;
+  let adminRoleId: string;
 
   const api = () => request(app.getHttpServer());
 
@@ -26,9 +27,11 @@ describe('Users (e2e, tenant-scoped)', () => {
 
   beforeEach(async () => {
     await resetDatabase(prisma);
-    tenantId = (await createTenant(prisma, { slug: 'acme-labs' })).id;
+    const tenant = await createTenant(prisma, { slug: 'acme-labs' });
+    tenantId = tenant.id;
+    adminRoleId = tenant.adminRoleId;
     adminId = (
-      await createUser(prisma, { email: 'admin@acme.test', tenantId, isTenantAdmin: true })
+      await createUser(prisma, { email: 'admin@acme.test', tenantId, roleIds: [adminRoleId] })
     ).id;
     adminCookie = await loginCookie(app, 'admin@acme.test');
   });
@@ -42,7 +45,7 @@ describe('Users (e2e, tenant-scoped)', () => {
       await api().get('/api/v1/users').expect(401);
     });
 
-    it('forbids users who are not tenant admins', async () => {
+    it('forbids users without user permissions', async () => {
       await createUser(prisma, { email: 'lab@acme.test', tenantId });
       const cookie = await loginCookie(app, 'lab@acme.test');
       const res = await api().get('/api/v1/users').set('Cookie', cookie).expect(403);
@@ -66,8 +69,8 @@ describe('Users (e2e, tenant-scoped)', () => {
       expect(res.body.data).toMatchObject({
         email: 'new.analyst@acme.test',
         status: 'ACTIVE',
-        isTenantAdmin: false,
         isPlatformAdmin: false,
+        roles: [],
       });
       expect(JSON.stringify(res.body)).not.toMatch(/password/i);
       const stored = await prisma.user.findUniqueOrThrow({ where: { id: res.body.data.id } });
@@ -171,14 +174,12 @@ describe('Users (e2e, tenant-scoped)', () => {
         .expect(401);
     });
 
-    it('prevents admins from disabling themselves or dropping their own admin access', async () => {
-      for (const body of [{ status: 'DISABLED' }, { isTenantAdmin: false }]) {
-        await api()
-          .patch(`/api/v1/users/${adminId}`)
-          .set('Cookie', adminCookie)
-          .send(body)
-          .expect(400);
-      }
+    it('prevents admins from disabling themselves', async () => {
+      await api()
+        .patch(`/api/v1/users/${adminId}`)
+        .set('Cookie', adminCookie)
+        .send({ status: 'DISABLED' })
+        .expect(400);
     });
 
     it('rejects an empty update', async () => {

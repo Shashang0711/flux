@@ -1,7 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import {
   ErrorCode,
-  effectiveModules,
   type ChangePasswordRequest,
   type LoginRequest,
   type SessionInfo,
@@ -9,7 +8,8 @@ import {
 } from '@flux/shared';
 import { AppException } from '../../common/errors/app.exception';
 import { PrismaService } from '../../database/prisma.service';
-import { toUserDto } from '../users/user.mapper';
+import { USER_ROLES_INCLUDE, toUserDto } from '../users/user.mapper';
+import type { AuthUser } from './auth.types';
 import { hashPassword, verifyAgainstDummy, verifyPassword } from './password';
 import { SessionService } from './session.service';
 
@@ -57,13 +57,13 @@ export class AuthService {
     return { user: toUserDto(updated), token, expiresAt };
   }
 
-  async me(userId: string): Promise<SessionInfo> {
+  /** Session details; access was already computed by AuthGuard for this request. */
+  async me(auth: AuthUser): Promise<SessionInfo> {
     const user = await this.prisma.user.findUnique({
-      where: { id: userId },
+      where: { id: auth.id },
       include: {
-        tenant: {
-          select: { id: true, slug: true, name: true, modules: { select: { moduleKey: true } } },
-        },
+        ...USER_ROLES_INCLUDE,
+        tenant: { select: { id: true, slug: true, name: true } },
       },
     });
     if (!user) throw AppException.unauthenticated();
@@ -71,7 +71,8 @@ export class AuthService {
     return {
       user: toUserDto(user),
       tenant: tenant ? { id: tenant.id, slug: tenant.slug, name: tenant.name } : null,
-      modules: tenant ? effectiveModules(tenant.modules.map((m) => m.moduleKey)) : [],
+      modules: auth.modules,
+      access: auth.access,
     };
   }
 

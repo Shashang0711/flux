@@ -5,3 +5,5 @@ export * from './api/pagination';
 export * from './identity/users';
 export * from './tenancy/modules';
 export * from './tenancy/tenants';
+export * from './access/catalogue';
+export * from './access/roles';

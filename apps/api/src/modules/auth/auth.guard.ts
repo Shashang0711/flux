@@ -1,20 +1,20 @@
 import { CanActivate, ExecutionContext, HttpStatus, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { ErrorCode, MODULES, type ModuleKey } from '@flux/shared';
+import { ErrorCode, MODULES, type ModuleKey, type PermissionKey } from '@flux/shared';
 import { AppException } from '../../common/errors/app.exception';
 import type { AuthenticatedRequest } from './auth.types';
 import {
   IS_PUBLIC_KEY,
   REQUIRED_MODULE_KEY,
+  REQUIRED_PERMISSIONS_KEY,
   REQUIRES_PLATFORM_ADMIN_KEY,
-  REQUIRES_TENANT_ADMIN_KEY,
 } from './decorators';
 import { readSessionToken } from './session-cookie';
 import { SessionService } from './session.service';
 
 /**
  * Global guard. Every route requires a valid session unless marked @Public(), then:
- * @RequirePlatformAdmin(), @RequireTenantAdmin() (temporary until M3b) and @RequireModule().
+ * @RequirePlatformAdmin(), @RequireModule() and @RequirePermission().
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -41,9 +41,6 @@ export class AuthGuard implements CanActivate {
     if (meta<boolean>(REQUIRES_PLATFORM_ADMIN_KEY) && !user.isPlatformAdmin) {
       throw AppException.forbidden();
     }
-    if (meta<boolean>(REQUIRES_TENANT_ADMIN_KEY) && !user.isTenantAdmin) {
-      throw AppException.forbidden();
-    }
     const module = meta<ModuleKey | undefined>(REQUIRED_MODULE_KEY);
     if (module && !user.modules.includes(module)) {
       const name = MODULES.find((m) => m.key === module)?.name ?? module;
@@ -52,6 +49,10 @@ export class AuthGuard implements CanActivate {
         ErrorCode.MODULE_NOT_ENABLED,
         `Your organisation does not have the ${name} module`,
       );
+    }
+    const required = meta<PermissionKey[] | undefined>(REQUIRED_PERMISSIONS_KEY);
+    if (required && !required.every((p) => user.access.permissions.includes(p))) {
+      throw AppException.forbidden();
     }
     return true;
   }

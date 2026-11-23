@@ -78,13 +78,25 @@ export class TenantsService {
             modules: { create: input.modules.map((moduleKey) => ({ moduleKey })) },
           },
         });
+        // Every tenant gets the built-in Administrator role; its first user holds it.
+        const adminRole = await tx.role.create({
+          data: {
+            tenantId: created.id,
+            name: 'Administrator',
+            description:
+              'Built-in role with full access to every module licensed to the organisation',
+            defaultPortal: 'ADMIN',
+            isSystem: true,
+          },
+        });
         await tx.user.create({
           data: {
             tenantId: created.id,
             email: input.admin.email,
             name: input.admin.name,
             passwordHash,
-            isTenantAdmin: true,
+            // tenant_id comes from the user through the composite relation.
+            userRoles: { create: { roleId: adminRole.id } },
           },
         });
         return tx.tenant.findUniqueOrThrow({ where: { id: created.id }, include: WITH_MODULES });

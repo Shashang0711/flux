@@ -33,8 +33,13 @@ model Tenant {
   createdAt DateTime     @default(now()) @map("created_at")
   updatedAt DateTime     @updatedAt @map("updated_at")
 
-  modules TenantModule[]
-  users   User[]
+  modules         TenantModule[]
+  users           User[]
+  roles           Role[]
+  rolePortals     RolePortal[]
+  roleModules     RoleModule[]
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
 
   @@map("tenants")
 }
@@ -69,15 +74,16 @@ model User {
   tenantId        String?    @map("tenant_id") @db.Uuid
   /// Platform operator: manages tenants, belongs to no tenant.
   isPlatformAdmin Boolean    @default(false) @map("is_platform_admin")
-  /// Temporary until M3b: manages users of their own tenant. Replaced by role permissions.
-  isTenantAdmin   Boolean    @default(false) @map("is_tenant_admin")
   lastLoginAt     DateTime?  @map("last_login_at")
   createdAt       DateTime   @default(now()) @map("created_at")
   updatedAt       DateTime   @updatedAt @map("updated_at")
 
-  tenant   Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  sessions Session[]
+  tenant    Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  sessions  Session[]
+  userRoles UserRole[]
 
+  /// Target for composite foreign keys that pin child rows to the same tenant.
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@map("users")
 }
@@ -99,4 +105,97 @@ model Session {
 
   @@index([userId])
   @@map("sessions")
+}
+
+// ─── Access control (M3b) ───────────────────────────────────────────────────
+// Permission, module and portal keys come from the catalogue in @flux/shared.
+// Child tables carry tenant_id and composite FKs (…, tenant_id) so a row can never
+// link records of two different tenants.
+
+enum Portal {
+  ADMIN
+  LAB
+  CLIENT
+  FINANCE
+}
+
+/// A tenant-defined role. Exactly one per tenant is the built-in Administrator (is_system).
+model Role {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  /// Unique per tenant, case-insensitively (expression index in the migration).
+  name          String
+  description   String?
+  defaultPortal Portal   @map("default_portal")
+  isActive      Boolean  @default(true) @map("is_active")
+  isSystem      Boolean  @default(false) @map("is_system")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  portals     RolePortal[]
+  modules     RoleModule[]
+  permissions RolePermission[]
+  userRoles   UserRole[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@map("roles")
+}
+
+model RolePortal {
+  tenantId String @map("tenant_id") @db.Uuid
+  roleId   String @map("role_id") @db.Uuid
+  portal   Portal
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@id([roleId, portal])
+  @@index([tenantId])
+  @@map("role_portals")
+}
+
+model RoleModule {
+  tenantId  String @map("tenant_id") @db.Uuid
+  roleId    String @map("role_id") @db.Uuid
+  moduleKey String @map("module_key")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@id([roleId, moduleKey])
+  @@index([tenantId])
+  @@map("role_modules")
+}
+
+model RolePermission {
+  tenantId      String @map("tenant_id") @db.Uuid
+  roleId        String @map("role_id") @db.Uuid
+  permissionKey String @map("permission_key")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@id([roleId, permissionKey])
+  @@index([tenantId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  tenantId     String   @map("tenant_id") @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  roleId       String   @map("role_id") @db.Uuid
+  assignedAt   DateTime @default(now()) @map("assigned_at")
+  /// Who assigned it (a user of the same tenant, or null for system/platform actions).
+  assignedById String?  @map("assigned_by_id") @db.Uuid
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@index([tenantId])
+  @@map("user_roles")
 }
