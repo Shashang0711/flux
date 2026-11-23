@@ -1,18 +1,13 @@
 import { INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { AppModule } from '../src/app.module';
-import { configureApp } from '../src/app.setup';
+import { createE2eApp } from './e2e-app';
 
-/** Real database round-trip. Requires DATABASE_URL to point at a migrated database. */
+/** Real database round-trip against the e2e test database. */
 describe('Health (e2e, real database)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = moduleRef.createNestApplication({ logger: false });
-    configureApp(app, { corsOrigins: [] });
-    await app.init();
+    ({ app } = await createE2eApp());
   });
 
   afterAll(async () => {

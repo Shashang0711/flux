@@ -11,11 +11,34 @@
 }
 
 .subtitle {
-  margin: 4px 0 32px;
+  margin: 4px 0 0;
   color: var(--muted);
 }
 
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.secondaryButton {
+  font: inherit;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.secondaryButton:disabled {
+  opacity: 0.6;
+}
+
 .card {
+  margin-bottom: 16px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;

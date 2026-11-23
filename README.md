@@ -17,8 +17,22 @@ npm workspaces; Node 20.19+ (`.nvmrc`).
 
 ## Getting started
 
-1. **Database.** Either `docker compose up -d` (Postgres 16 on host port **5433**, user/password/db
-   `flux`), or create a database on an existing Postgres server and set `DATABASE_URL` accordingly.
+### Option A: everything in Docker
+
+```bash
+docker compose up -d --build
+```
+
+This starts Postgres (host port **5433**), the API (**4000**, applies migrations on start) and the
+web app (**3000**). Open http://localhost:3000. Seed the database once with
+`docker compose exec api npx prisma db seed`. Ports can be changed with `POSTGRES_PORT`,
+`API_PORT` and `WEB_PORT`. Stop any local `npm run dev` first, or the ports will clash.
+
+### Option B: apps on the host
+
+1. **Database.** Either `docker compose up -d postgres` (Postgres 16 on host port **5433**,
+   user/password/db `flux`), or create a database on an existing Postgres server and set
+   `DATABASE_URL` accordingly.
 2. **Environment.**
    ```bash
    cp apps/api/.env.example apps/api/.env   # set DATABASE_URL if not using Docker
@@ -28,11 +42,17 @@ npm workspaces; Node 20.19+ (`.nvmrc`).
    ```bash
    npm install          # also builds packages/shared and generates the Prisma client
    npm run db:migrate
-   npm run db:seed
-   npm run dev          # API on :4000, web on :3000
+   npm run db:seed      # creates the bootstrap admin (see below)
+   npm run dev          # API on :4000, web on :3000, shared package in watch mode
    ```
-   Open http://localhost:3000. The home page shows live API and database status, from
-   `GET /api/v1/health`.
+   Open http://localhost:3000 and sign in.
+
+### Bootstrap admin
+
+There is no self-registration. Set `FLUX_ADMIN_EMAIL` and `FLUX_ADMIN_PASSWORD` (12+ characters)
+in `apps/api/.env`, then run `npm run db:seed`. The seed creates that system admin only if the
+email does not exist yet; re-running it never changes an existing account. Change the password
+after first sign-in (`POST /api/v1/auth/change-password`).
 
 ## Scripts (from the repo root)
 
@@ -66,6 +86,40 @@ infrastructure in `apps/api/src/common`.
 - **Configuration** is validated at boot (`src/config/env.ts`). The API refuses to start with
   a bad environment.
 - Opt out of the envelope (file downloads, exports) with `@RawResponse()`.
+
+## Authentication
+
+- **Sessions** are server-side (`sessions` table). The browser holds a random token in the
+  httpOnly, SameSite=Lax cookie `flux_session`; the database stores only its SHA-256 hash.
+  Sessions end on logout, after `SESSION_IDLE_MINUTES` of inactivity, or after
+  `SESSION_TTL_HOURS`. Disabling a user or resetting their password revokes their sessions at once.
+- **Deny by default.** A global guard requires a valid session on every route. Mark exceptions
+  with `@Public()`. Get the caller with `@CurrentUser()`.
+- **`@RequireSystemAdmin()`** (user management) is temporary; M3 replaces it with role permissions.
+- **Passwords** are hashed with argon2id. The policy lives in `@flux/shared` so the API and forms
+  agree. Login answers "Invalid email or password" for every failure, and is rate-limited per IP
+  (`LOGIN_RATE_LIMIT`) and per account (`LOGIN_ACCOUNT_RATE_LIMIT`).
+- **Web → API.** Browser code calls same-origin `/api/v1/*`; the Route Handler
+  `apps/web/src/app/api/v1/[...path]` forwards to `API_BASE_URL`, read at request time, so one
+  build works in every environment. Server Components call the API directly via
+  `serverApiFetch`, forwarding the session cookie, and protect pages with `requireUser()`.
+  `src/proxy.ts` only redirects requests without a cookie to `/login`.
+- **Behind a proxy**, set `TRUST_PROXY` so the API sees real client IPs (the default `loopback`
+  covers a Next.js server on the same host).
+
+### Endpoints (M2)
+
+| Method and path                         | Access       | Purpose                                  |
+| --------------------------------------- | ------------ | ---------------------------------------- |
+| `POST /api/v1/auth/login`               | Public       | Sign in; sets the session cookie         |
+| `POST /api/v1/auth/logout`              | Public       | Revoke the session and clear the cookie  |
+| `GET /api/v1/auth/me`                   | Signed in    | Current user                             |
+| `POST /api/v1/auth/change-password`     | Signed in    | Change own password; ends other sessions |
+| `GET /api/v1/users`                     | System admin | List (`page`, `pageSize`, `q`, `status`) |
+| `POST /api/v1/users`                    | System admin | Create user                              |
+| `GET /api/v1/users/:id`                 | System admin | Read user                                |
+| `PATCH /api/v1/users/:id`               | System admin | Update name, email, status or admin flag |
+| `POST /api/v1/users/:id/reset-password` | System admin | Set a new password; ends their sessions  |
 
 ## Database conventions
 

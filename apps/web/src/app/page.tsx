@@ -1,9 +1,8 @@
 import type { HealthStatus } from '@flux/shared';
+import { LogoutButton } from '@/components/logout-button';
 import { ApiError, apiFetch } from '@/lib/api';
+import { requireUser } from '@/lib/server-api';
 import styles from './page.module.css';
-
-// Always render on request so the status reflects the live API.
-export const dynamic = 'force-dynamic';
 
 async function loadHealth(): Promise<{ health?: HealthStatus; error?: string }> {
   try {
@@ -15,12 +14,31 @@ async function loadHealth(): Promise<{ health?: HealthStatus; error?: string }> 
 }
 
 export default async function HomePage() {
+  const user = await requireUser();
   const { health, error } = await loadHealth();
 
   return (
     <main className={styles.main}>
-      <h1 className={styles.title}>FLUX</h1>
-      <p className={styles.subtitle}>Fluid &amp; Laboratory Unified eXchange</p>
+      <header className={styles.header}>
+        <div>
+          <h1 className={styles.title}>FLUX</h1>
+          <p className={styles.subtitle}>Fluid &amp; Laboratory Unified eXchange</p>
+        </div>
+        <LogoutButton className={styles.secondaryButton} />
+      </header>
+
+      <section className={styles.card} aria-label="Signed-in user">
+        <div className={styles.row}>
+          <span className={styles.label}>Signed in as</span>
+          <span>
+            {user.name} · {user.email}
+          </span>
+        </div>
+        <div className={styles.row}>
+          <span className={styles.label}>Access</span>
+          <span>{user.isSystemAdmin ? 'System administrator' : 'Standard user'}</span>
+        </div>
+      </section>
 
       <section className={styles.card} aria-label="System status">
         <div className={styles.row}>
