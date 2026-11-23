@@ -1,0 +1,15 @@
+// FLUX database schema.
+// Domain models are added milestone by milestone (M2 users, M3 roles/permissions/audit, ...).
+// Conventions:
+//   - UUID primary keys; human-readable business codes as separate @unique columns.
+//   - Workflow states are Prisma enums, never free-text strings.
+//   - snake_case table/column names via @@map / @map; camelCase in TypeScript.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
