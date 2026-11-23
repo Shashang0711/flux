@@ -194,6 +194,29 @@ RLS while tenant queries switch to `flux_app`.
 - Guard endpoints with `@RequirePermission('<key>')` (all listed keys required). Combine with
   `@RequireModule` where the whole controller belongs to an optional module.
 
+## Reference data
+
+Hybrid lists (vessel types, classification societies, vessel relationship types, …) live in one
+generic table, `reference_items`; the lists themselves are `REFERENCE_LISTS` in `@flux/shared`.
+**Adding a list needs no migration**: add it to the catalogue and seed its defaults.
+
+- **FLUX defaults** (`tenant_id` NULL) are managed by platform admins (Platform → Reference data)
+  and visible to every tenant. `prisma/reference-defaults.ts` holds the seeded defaults; the seed
+  only creates missing items and never overwrites edits.
+- **Tenant items** are each organisation's own additions (Admin → Reference data,
+  `reference-data.manage`). Tenants can also **hide** a FLUX default they don't use; hiding is
+  per tenant. Defaults themselves can never be changed by a tenant (RLS: tenants may read
+  defaults but write only their own rows; a trigger allows hiding only defaults).
+- Codes are unique per list within each scope, ignoring case, and a tenant item may not reuse a
+  default's code.
+- Items are deactivated, never deleted. `GET /reference-data/:list` returns active, non-hidden
+  items for dropdowns; `?view=all` returns everything for management screens.
+- A list is available to a tenant only if its module is licensed.
+- Domain tables should reference items with a composite foreign key `(…_id, list_key)` →
+  `reference_items (id, list_key)` so a vessel can only point at a vessel type.
+- Tenant changes go to the tenant's audit log; changes to defaults go to the **platform audit
+  log** (`audit_logs.tenant_id` NULL, invisible to tenants; Platform → Audit log).
+
 ## Audit log
 
 Every significant change is recorded in `audit_logs`: actor, action, record, request ID, IP and
