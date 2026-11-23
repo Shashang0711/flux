@@ -4,6 +4,8 @@
 //   - UUID primary keys; human-readable business codes as separate @unique columns.
 //   - Workflow states are Prisma enums, never free-text strings.
 //   - snake_case table/column names via @@map / @map; camelCase in TypeScript.
+//   - Multi-tenancy: every tenant-owned table has tenant_id, a row-level security policy using
+//     app_current_tenant(), and explicit grants to the flux_app role (see README, "Tenancy").
 
 generator client {
   provider = "prisma-client-js"
@@ -14,6 +16,41 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Tenancy (M3a) ──────────────────────────────────────────────────────────
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+/// A company subscribed to FLUX. All tenant-owned data is isolated by tenant_id + RLS.
+model Tenant {
+  id        String       @id @default(uuid()) @db.Uuid
+  /// URL-safe identifier, unique across the platform.
+  slug      String       @unique
+  name      String
+  status    TenantStatus @default(ACTIVE)
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  modules TenantModule[]
+  users   User[]
+
+  @@map("tenants")
+}
+
+/// A licensed (enabled) optional module for a tenant. Keys come from MODULES in @flux/shared.
+model TenantModule {
+  tenantId  String   @map("tenant_id") @db.Uuid
+  moduleKey String   @map("module_key")
+  enabledAt DateTime @default(now()) @map("enabled_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, moduleKey])
+  @@map("tenant_modules")
+}
+
 // ─── Identity (M2) ──────────────────────────────────────────────────────────
 
 enum UserStatus {
@@ -22,20 +59,26 @@ enum UserStatus {
 }
 
 model User {
-  id            String     @id @default(uuid()) @db.Uuid
+  id              String     @id @default(uuid()) @db.Uuid
   /// Stored trimmed and lower-cased; uniqueness is therefore case-insensitive.
-  email         String     @unique
-  name          String
-  passwordHash  String     @map("password_hash")
-  status        UserStatus @default(ACTIVE)
-  /// Temporary until M3: grants user management. Replaced by role permissions (user.manage).
-  isSystemAdmin Boolean    @default(false) @map("is_system_admin")
-  lastLoginAt   DateTime?  @map("last_login_at")
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
+  email           String     @unique
+  name            String
+  passwordHash    String     @map("password_hash")
+  status          UserStatus @default(ACTIVE)
+  /// The user's tenant. NULL only for platform administrators (enforced by a CHECK constraint).
+  tenantId        String?    @map("tenant_id") @db.Uuid
+  /// Platform operator: manages tenants, belongs to no tenant.
+  isPlatformAdmin Boolean    @default(false) @map("is_platform_admin")
+  /// Temporary until M3b: manages users of their own tenant. Replaced by role permissions.
+  isTenantAdmin   Boolean    @default(false) @map("is_tenant_admin")
+  lastLoginAt     DateTime?  @map("last_login_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
 
+  tenant   Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   sessions Session[]
 
+  @@index([tenantId])
   @@map("users")
 }
 

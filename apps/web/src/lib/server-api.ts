@@ -1,7 +1,7 @@
 import 'server-only';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { SESSION_COOKIE_NAME, type UserDto } from '@flux/shared';
+import { SESSION_COOKIE_NAME, type SessionInfo } from '@flux/shared';
 import { ApiError, apiFetch, type ApiResult } from './api';
 
 /** apiFetch for Server Components: forwards the caller's session cookie to the API. */
@@ -20,10 +20,10 @@ export async function serverApiFetch<T>(
   });
 }
 
-/** The signed-in user, or null if the session is missing, expired or revoked. */
-export async function getCurrentUser(): Promise<UserDto | null> {
+/** The signed-in session (user + tenant + modules), or null if missing, expired or revoked. */
+export async function getSession(): Promise<SessionInfo | null> {
   try {
-    return (await serverApiFetch<UserDto>('/auth/me')).data;
+    return (await serverApiFetch<SessionInfo>('/auth/me')).data;
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) return null;
     throw err;
@@ -31,8 +31,8 @@ export async function getCurrentUser(): Promise<UserDto | null> {
 }
 
 /** Use at the top of protected pages: validates the session with the API. */
-export async function requireUser(): Promise<UserDto> {
-  const user = await getCurrentUser();
-  if (!user) redirect('/login');
-  return user;
+export async function requireSession(): Promise<SessionInfo> {
+  const session = await getSession();
+  if (!session) redirect('/login');
+  return session;
 }

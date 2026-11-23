@@ -6,6 +6,7 @@ import { hashPassword } from '../src/modules/auth/password';
  * Idempotent seed. Each milestone appends its reference data here using upserts,
  * so running `npm run db:seed` repeatedly is always safe.
  */
+/** The first platform administrator. Tenants and their admins are created through the API. */
 async function seedBootstrapAdmin(prisma: PrismaClient): Promise<void> {
   const { FLUX_ADMIN_EMAIL, FLUX_ADMIN_PASSWORD, FLUX_ADMIN_NAME } = process.env;
   if (!FLUX_ADMIN_EMAIL || !FLUX_ADMIN_PASSWORD) {
@@ -23,9 +24,10 @@ async function seedBootstrapAdmin(prisma: PrismaClient): Promise<void> {
   await prisma.user.create({
     data: {
       email,
-      name: FLUX_ADMIN_NAME?.trim() || 'System Administrator',
+      name: FLUX_ADMIN_NAME?.trim() || 'Platform Administrator',
       passwordHash: await hashPassword(password),
-      isSystemAdmin: true,
+      // Platform operator: belongs to no tenant and creates tenants and their admins.
+      isPlatformAdmin: true,
     },
   });
   console.log(`Bootstrap admin ${email} created.`);

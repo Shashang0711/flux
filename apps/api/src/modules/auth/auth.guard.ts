@@ -1,14 +1,20 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, HttpStatus, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { ErrorCode, MODULES, type ModuleKey } from '@flux/shared';
 import { AppException } from '../../common/errors/app.exception';
 import type { AuthenticatedRequest } from './auth.types';
-import { IS_PUBLIC_KEY, REQUIRES_SYSTEM_ADMIN_KEY } from './decorators';
+import {
+  IS_PUBLIC_KEY,
+  REQUIRED_MODULE_KEY,
+  REQUIRES_PLATFORM_ADMIN_KEY,
+  REQUIRES_TENANT_ADMIN_KEY,
+} from './decorators';
 import { readSessionToken } from './session-cookie';
 import { SessionService } from './session.service';
 
 /**
- * Global guard: every route requires a valid session unless marked @Public().
- * Also enforces @RequireSystemAdmin() (temporary until M3 permissions).
+ * Global guard. Every route requires a valid session unless marked @Public(), then:
+ * @RequirePlatformAdmin(), @RequireTenantAdmin() (temporary until M3b) and @RequireModule().
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -19,21 +25,33 @@ export class AuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const targets = [context.getHandler(), context.getClass()];
-    if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, targets)) return true;
+    const meta = <T>(key: string) => this.reflector.getAllAndOverride<T>(key, targets);
+
+    if (meta<boolean>(IS_PUBLIC_KEY)) return true;
 
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const token = readSessionToken(request.cookies);
     const session = token ? await this.sessions.resolve(token) : null;
     if (!session) throw AppException.unauthenticated();
 
-    request.user = session.user;
+    const { user } = session;
+    request.user = user;
     request.sessionId = session.sessionId;
 
-    if (
-      this.reflector.getAllAndOverride<boolean>(REQUIRES_SYSTEM_ADMIN_KEY, targets) &&
-      !session.user.isSystemAdmin
-    ) {
+    if (meta<boolean>(REQUIRES_PLATFORM_ADMIN_KEY) && !user.isPlatformAdmin) {
       throw AppException.forbidden();
+    }
+    if (meta<boolean>(REQUIRES_TENANT_ADMIN_KEY) && !user.isTenantAdmin) {
+      throw AppException.forbidden();
+    }
+    const module = meta<ModuleKey | undefined>(REQUIRED_MODULE_KEY);
+    if (module && !user.modules.includes(module)) {
+      const name = MODULES.find((m) => m.key === module)?.name ?? module;
+      throw new AppException(
+        HttpStatus.FORBIDDEN,
+        ErrorCode.MODULE_NOT_ENABLED,
+        `Your organisation does not have the ${name} module`,
+      );
     }
     return true;
   }

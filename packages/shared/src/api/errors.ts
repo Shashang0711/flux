@@ -4,6 +4,10 @@ export const ErrorCode = {
   BAD_REQUEST: 'BAD_REQUEST',
   UNAUTHENTICATED: 'UNAUTHENTICATED',
   FORBIDDEN: 'FORBIDDEN',
+  /** The tenant is not licensed for the module this endpoint belongs to. */
+  MODULE_NOT_ENABLED: 'MODULE_NOT_ENABLED',
+  /** The user's organisation has been suspended by the platform. */
+  TENANT_SUSPENDED: 'TENANT_SUSPENDED',
   NOT_FOUND: 'NOT_FOUND',
   CONFLICT: 'CONFLICT',
   TOO_MANY_REQUESTS: 'TOO_MANY_REQUESTS',

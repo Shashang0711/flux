@@ -37,9 +37,9 @@ services:
       # API sees the real client IP (used by the per-IP login rate limit).
       TRUST_PROXY: 'loopback, uniquelocal'
       # Bootstrap admin, created on start if it does not exist yet. Set FLUX_ADMIN_PASSWORD
-      # (12+ characters) in a .env file next to this compose file; if unset, seeding is skipped.
+      # (8+ characters) in a .env file next to this compose file; if unset, seeding is skipped.
       FLUX_ADMIN_EMAIL: ${FLUX_ADMIN_EMAIL:-admin@flux.local}
-      FLUX_ADMIN_NAME: ${FLUX_ADMIN_NAME:-System Administrator}
+      FLUX_ADMIN_NAME: ${FLUX_ADMIN_NAME:-Platform Administrator}
       FLUX_ADMIN_PASSWORD: ${FLUX_ADMIN_PASSWORD:-}
     ports:
       - '${API_PORT:-4000}:4000'

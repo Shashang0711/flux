@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { PrismaService } from '../src/database/prisma.service';
-import { TEST_PASSWORD, createE2eApp, createUser, resetDatabase } from './e2e-app';
+import { TEST_PASSWORD, createE2eApp, createTenant, createUser, resetDatabase } from './e2e-app';
 
 function sessionCookie(res: request.Response): string {
   const cookies = ([] as string[]).concat(res.headers['set-cookie'] ?? []);
@@ -13,6 +13,7 @@ function sessionCookie(res: request.Response): string {
 describe('Auth (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let tenantId: string;
 
   beforeAll(async () => {
     ({ app, prisma } = await createE2eApp());
@@ -20,7 +21,10 @@ describe('Auth (e2e)', () => {
 
   beforeEach(async () => {
     await resetDatabase(prisma);
-    await createUser(prisma, { email: 'lab.user@flux.test', name: 'Lab User' });
+    tenantId = (
+      await createTenant(prisma, { slug: 'acme-labs', name: 'Acme Labs', modules: ['samples'] })
+    ).id;
+    await createUser(prisma, { email: 'lab.user@flux.test', name: 'Lab User', tenantId });
   });
 
   afterAll(async () => {
@@ -65,9 +69,18 @@ describe('Auth (e2e)', () => {
     });
 
     it('rejects disabled users with the same generic message', async () => {
-      await createUser(prisma, { email: 'gone@flux.test', status: 'DISABLED' });
+      await createUser(prisma, { email: 'gone@flux.test', status: 'DISABLED', tenantId });
       const res = await login('gone@flux.test').expect(401);
       expect(res.body.error.message).toBe('Invalid email or password');
+    });
+
+    it('rejects users of a suspended tenant (only after a correct password)', async () => {
+      await prisma.tenant.update({ where: { id: tenantId }, data: { status: 'SUSPENDED' } });
+      const res = await login('lab.user@flux.test').expect(403);
+      expect(res.body.error.code).toBe('TENANT_SUSPENDED');
+      // A wrong password still gets the generic answer.
+      const wrong = await login('lab.user@flux.test', 'not-the-password').expect(401);
+      expect(wrong.body.error.message).toBe('Invalid email or password');
     });
 
     it('validates the body', async () => {
@@ -80,13 +93,17 @@ describe('Auth (e2e)', () => {
   });
 
   describe('session lifecycle', () => {
-    it('GET /auth/me returns the signed-in user and never the password hash', async () => {
+    it('GET /auth/me returns the user, tenant and effective modules, never the hash', async () => {
       const cookie = sessionCookie(await login('lab.user@flux.test'));
       const res = await request(app.getHttpServer())
         .get('/api/v1/auth/me')
         .set('Cookie', cookie)
         .expect(200);
-      expect(res.body.data.email).toBe('lab.user@flux.test');
+      expect(res.body.data).toMatchObject({
+        user: { email: 'lab.user@flux.test', isPlatformAdmin: false },
+        tenant: { id: tenantId, slug: 'acme-labs', name: 'Acme Labs' },
+        modules: ['administration', 'samples'],
+      });
       expect(JSON.stringify(res.body)).not.toMatch(/passwordHash|password_hash|argon2/);
     });
 
@@ -119,6 +136,26 @@ describe('Auth (e2e)', () => {
       const cookie = sessionCookie(await login('lab.user@flux.test'));
       await prisma.session.updateMany({ data: { expiresAt: new Date(Date.now() - 1000) } });
       await request(app.getHttpServer()).get('/api/v1/auth/me').set('Cookie', cookie).expect(401);
+    });
+
+    it('ends sessions when the tenant is suspended', async () => {
+      const cookie = sessionCookie(await login('lab.user@flux.test'));
+      await prisma.tenant.update({ where: { id: tenantId }, data: { status: 'SUSPENDED' } });
+      await request(app.getHttpServer()).get('/api/v1/auth/me').set('Cookie', cookie).expect(401);
+    });
+
+    it('platform admins have no tenant and no modules', async () => {
+      await createUser(prisma, { email: 'operator@flux.test', isPlatformAdmin: true });
+      const cookie = sessionCookie(await login('operator@flux.test'));
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/auth/me')
+        .set('Cookie', cookie)
+        .expect(200);
+      expect(res.body.data).toMatchObject({
+        user: { isPlatformAdmin: true },
+        tenant: null,
+        modules: [],
+      });
     });
 
     it('rejects idle sessions', async () => {
