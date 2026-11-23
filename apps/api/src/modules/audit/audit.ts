@@ -12,7 +12,8 @@ import type { AuthUser } from '../auth/auth.types';
 type Tx = Prisma.TransactionClient;
 
 export interface AuditEntry {
-  tenantId: string;
+  /** Null for platform-level entries (invisible to tenants). */
+  tenantId: string | null;
   /** Null for automated/system actions. */
   actor: AuthUser | null;
   action: AuditAction;

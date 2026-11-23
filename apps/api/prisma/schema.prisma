@@ -41,6 +41,8 @@ model Tenant {
   rolePermissions RolePermission[]
   userRoles       UserRole[]
   auditLogs       AuditLog[]
+  referenceItems  ReferenceItem[]
+  hiddenReference ReferenceItemHidden[]
 
   @@map("tenants")
 }
@@ -213,7 +215,8 @@ enum AuditActorType {
 /// A trigger rejects UPDATE and DELETE for everyone; the app role may only SELECT and INSERT.
 model AuditLog {
   id          String         @id @default(uuid()) @db.Uuid
-  tenantId    String         @map("tenant_id") @db.Uuid
+  /// NULL for platform-level entries (e.g. FLUX default reference data); invisible to tenants.
+  tenantId    String?        @map("tenant_id") @db.Uuid
   occurredAt  DateTime       @default(now()) @map("occurred_at")
   /// Snapshot of the actor; no foreign key, so history never depends on other rows.
   actorType   AuditActorType @map("actor_type")
@@ -233,10 +236,52 @@ model AuditLog {
   requestId   String?        @map("request_id")
   ipAddress   String?        @map("ip_address")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([tenantId, occurredAt(sort: Desc)])
   @@index([entityId])
   @@index([relatedIds], type: Gin)
   @@map("audit_logs")
+}
+
+// ─── Reference data (M4) ────────────────────────────────────────────────────
+// Hybrid: rows with tenant_id NULL are FLUX defaults (managed by platform admins, readable by
+// every tenant); rows with a tenant_id are that tenant's own items. List keys come from
+// REFERENCE_LISTS in @flux/shared, so new lists need no migration.
+
+model ReferenceItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  /// NULL = FLUX default shared by every tenant.
+  tenantId    String?  @map("tenant_id") @db.Uuid
+  listKey     String   @map("list_key")
+  /// Unique per list and scope, case-insensitively (expression indexes in the migration).
+  code        String
+  name        String
+  description String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  /// Items are deactivated, never deleted, because records will reference them.
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant?               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  hiddenBy ReferenceItemHidden[]
+
+  /// Lets domain tables use a typed composite FK (item id + list key), e.g. vessel → vessel-type.
+  @@unique([id, listKey])
+  @@index([listKey, tenantId])
+  @@map("reference_items")
+}
+
+/// A FLUX default that a tenant has chosen not to use (hidden from its dropdowns).
+model ReferenceItemHidden {
+  tenantId String   @map("tenant_id") @db.Uuid
+  itemId   String   @map("item_id") @db.Uuid
+  hiddenAt DateTime @default(now()) @map("hidden_at")
+
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  item   ReferenceItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, itemId])
+  @@map("reference_item_hidden")
 }

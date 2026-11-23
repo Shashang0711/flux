@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { emailSchema, passwordSchema } from '@flux/shared';
 import { hashPassword } from '../src/modules/auth/password';
+import { REFERENCE_DEFAULTS } from './reference-defaults';
 
 /**
  * Idempotent seed. Each milestone appends its reference data here using upserts,
@@ -33,10 +34,30 @@ async function seedBootstrapAdmin(prisma: PrismaClient): Promise<void> {
   console.log(`Bootstrap admin ${email} created.`);
 }
 
+/** FLUX default reference data: creates missing items, never changes existing ones. */
+async function seedReferenceDefaults(prisma: PrismaClient): Promise<void> {
+  let created = 0;
+  for (const [listKey, items] of Object.entries(REFERENCE_DEFAULTS)) {
+    for (const [index, item] of items.entries()) {
+      const existing = await prisma.referenceItem.findFirst({
+        where: { tenantId: null, listKey, code: { equals: item.code, mode: 'insensitive' } },
+        select: { id: true },
+      });
+      if (existing) continue;
+      await prisma.referenceItem.create({
+        data: { listKey, code: item.code, name: item.name, sortOrder: (index + 1) * 10 },
+      });
+      created += 1;
+    }
+  }
+  console.log(`Reference data: ${created} FLUX default item(s) created.`);
+}
+
 async function main(): Promise<void> {
   const prisma = new PrismaClient();
   try {
     await seedBootstrapAdmin(prisma);
+    await seedReferenceDefaults(prisma);
     console.log('Seed complete.');
   } finally {
     await prisma.$disconnect();

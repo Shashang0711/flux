@@ -30,7 +30,12 @@ const labels = (s: SessionInfo) => visibleNavigation(s).flatMap((g) => g.items.m
 
 describe('visibleNavigation', () => {
   it('shows platform screens only to platform admins', () => {
-    expect(labels(session({ isPlatformAdmin: true }))).toEqual(['Dashboard', 'Tenants']);
+    expect(labels(session({ isPlatformAdmin: true }))).toEqual([
+      'Dashboard',
+      'Tenants',
+      'Reference data',
+      'Audit log',
+    ]);
   });
 
   it('shows administration screens by permission', () => {

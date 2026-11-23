@@ -22,13 +22,22 @@ export const NAVIGATION: NavGroup[] = [
   { label: 'Overview', items: [{ href: '/', label: 'Dashboard' }] },
   {
     label: 'Platform',
-    items: [{ href: '/platform/tenants', label: 'Tenants', platformOnly: true }],
+    items: [
+      { href: '/platform/tenants', label: 'Tenants', platformOnly: true },
+      { href: '/platform/reference-data', label: 'Reference data', platformOnly: true },
+      { href: '/platform/audit', label: 'Audit log', platformOnly: true },
+    ],
   },
   {
     label: 'Administration',
     items: [
       { href: '/admin/users', label: 'Users', permission: 'user.view' },
       { href: '/admin/roles', label: 'Roles', permission: 'role.view' },
+      {
+        href: '/admin/reference-data',
+        label: 'Reference data',
+        permission: 'reference-data.manage',
+      },
       { href: '/admin/audit', label: 'Audit log', permission: 'audit.view' },
     ],
   },

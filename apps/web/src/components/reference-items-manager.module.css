@@ -1,0 +1,48 @@
+.sub {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.dimmed td {
+  color: var(--muted);
+}
+
+.actions {
+  text-align: right;
+  width: 1%;
+  white-space: nowrap;
+}
+
+.edit summary {
+  list-style: none;
+}
+
+.edit summary::-webkit-details-marker {
+  display: none;
+}
+
+.edit[open] summary {
+  margin-bottom: 12px;
+}
+
+.editForm {
+  min-width: 280px;
+  text-align: left;
+  white-space: normal;
+}
+
+.addForm {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.addActions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}

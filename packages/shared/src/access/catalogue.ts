@@ -43,6 +43,11 @@ export const PERMISSIONS = [
     implies: ['role.view'],
   },
   { key: 'audit.view', module: 'administration', name: 'View the audit log' },
+  {
+    key: 'reference-data.manage',
+    module: 'administration',
+    name: 'Manage reference data (add own items, hide FLUX defaults)',
+  },
 
   // Clients
   { key: 'client.view', module: 'clients', name: 'View clients' },

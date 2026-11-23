@@ -16,6 +16,8 @@ const FIELD_LABELS: Record<string, string> = {
   modules: 'Modules',
   permissions: 'Permissions',
   clonedFrom: 'Cloned from',
+  code: 'Code',
+  sortOrder: 'Sort order',
 };
 
 function show(value: unknown): string {
