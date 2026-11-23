@@ -31,7 +31,7 @@ export async function resetDatabase(prisma: PrismaService): Promise<void> {
   const db = rows[0]?.db ?? '';
   if (!db.endsWith('_test')) throw new Error(`Refusing to truncate non-test database "${db}"`);
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "audit_logs", "user_roles", "role_permissions", "role_modules", "role_portals", "roles", ' +
+    'TRUNCATE TABLE "reference_item_hidden", "reference_items", "audit_logs", "user_roles", "role_permissions", "role_modules", "role_portals", "roles", ' +
       '"sessions", "users", "tenant_modules", "tenants" RESTART IDENTITY CASCADE',
   );
 }
@@ -131,4 +131,28 @@ export async function loginCookie(
   const cookie = ([] as string[]).concat(res.headers['set-cookie'] ?? [])[0];
   if (!cookie) throw new Error('No session cookie set');
   return cookie.split(';')[0]!;
+}
+
+/** Creates a reference item: a FLUX default when tenantId is omitted. */
+export async function createReferenceItem(
+  prisma: PrismaService,
+  data: {
+    list: string;
+    code: string;
+    name: string;
+    tenantId?: string;
+    isActive?: boolean;
+    sortOrder?: number;
+  },
+) {
+  return prisma.referenceItem.create({
+    data: {
+      tenantId: data.tenantId ?? null,
+      listKey: data.list,
+      code: data.code,
+      name: data.name,
+      isActive: data.isActive ?? true,
+      sortOrder: data.sortOrder ?? 0,
+    },
+  });
 }

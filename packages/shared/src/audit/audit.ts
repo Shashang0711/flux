@@ -24,12 +24,18 @@ export const AUDIT_ACTIONS = {
   'role.permissions_changed': 'Role permissions changed',
   'role.users_assigned': 'Users assigned to role',
   'role.user_unassigned': 'User removed from role',
+  'reference.created': 'Reference item created',
+  'reference.updated': 'Reference item updated',
+  'reference.activated': 'Reference item activated',
+  'reference.deactivated': 'Reference item deactivated',
+  'reference.hidden': 'FLUX default hidden',
+  'reference.shown': 'FLUX default shown again',
 } as const;
 
 export type AuditAction = keyof typeof AUDIT_ACTIONS;
 export const AUDIT_ACTION_KEYS = Object.keys(AUDIT_ACTIONS) as [AuditAction, ...AuditAction[]];
 
-export const AUDIT_ENTITY_TYPES = ['tenant', 'user', 'role'] as const;
+export const AUDIT_ENTITY_TYPES = ['tenant', 'user', 'role', 'reference-item'] as const;
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
 
 /** A scalar field that changed (from is null on creation). */

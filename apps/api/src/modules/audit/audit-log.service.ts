@@ -86,6 +86,20 @@ export class AuditLogService {
     });
   }
 
+  /** Platform-level entries only (e.g. FLUX default reference data). Platform admins only. */
+  async listPlatform(query: PageQuery & AuditListFilter): Promise<Paginated<AuditLogDto>> {
+    const where: Prisma.AuditLogWhereInput = { ...whereFor(query), tenantId: null };
+    const [entries, total] = await this.prisma.$transaction([
+      this.prisma.auditLog.findMany({ where, orderBy: NEWEST_FIRST, ...toSkipTake(query) }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+    return new Paginated(
+      entries.map((e) => toAuditLogDto(e, 'platform')),
+      total,
+      query,
+    );
+  }
+
   /**
    * Platform view of a tenant's organisation-level history (entries about the tenant record
    * itself). Tenant-internal activity is not exposed to platform operators.
