@@ -30,12 +30,24 @@ export const AUDIT_ACTIONS = {
   'reference.deactivated': 'Reference item deactivated',
   'reference.hidden': 'FLUX default hidden',
   'reference.shown': 'FLUX default shown again',
+  'client.created': 'Client created',
+  'client.updated': 'Client updated',
+  'client.activated': 'Client activated',
+  'client.deactivated': 'Client deactivated',
+  'client.address_added': 'Address added',
+  'client.address_updated': 'Address updated',
+  'client.address_removed': 'Address removed',
+  'client.contact_added': 'Contact added',
+  'client.contact_updated': 'Contact updated',
+  'client.contact_removed': 'Contact removed',
+  'client.billing_party_added': 'Billing party added',
+  'client.billing_party_updated': 'Billing party updated',
 } as const;
 
 export type AuditAction = keyof typeof AUDIT_ACTIONS;
 export const AUDIT_ACTION_KEYS = Object.keys(AUDIT_ACTIONS) as [AuditAction, ...AuditAction[]];
 
-export const AUDIT_ENTITY_TYPES = ['tenant', 'user', 'role', 'reference-item'] as const;
+export const AUDIT_ENTITY_TYPES = ['tenant', 'user', 'role', 'reference-item', 'client'] as const;
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
 
 /** A scalar field that changed (from is null on creation). */

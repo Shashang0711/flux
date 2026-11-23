@@ -29,6 +29,10 @@ export const NAVIGATION: NavGroup[] = [
     ],
   },
   {
+    label: 'Clients',
+    items: [{ href: '/admin/clients', label: 'Clients', permission: 'client.view' }],
+  },
+  {
     label: 'Administration',
     items: [
       { href: '/admin/users', label: 'Users', permission: 'user.view' },
