@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Prisma } from '@prisma/client';
 import { effectiveModules } from '@flux/shared';
+import { NO_ACCESS, ROLE_ACCESS_SELECT, buildSessionAccess } from './access';
 import type { Env } from '../../config/env';
 import { PrismaService } from '../../database/prisma.service';
 import type { AuthUser } from './auth.types';
@@ -68,8 +69,11 @@ export class SessionService {
             status: true,
             tenantId: true,
             isPlatformAdmin: true,
-            isTenantAdmin: true,
             tenant: { select: { status: true, modules: { select: { moduleKey: true } } } },
+            userRoles: {
+              orderBy: { assignedAt: 'asc' },
+              select: { role: { select: ROLE_ACCESS_SELECT } },
+            },
           },
         },
       },
@@ -91,6 +95,7 @@ export class SessionService {
         data: { lastSeenAt: new Date(now) },
       });
     }
+    const licensed = user.tenant?.modules.map((m) => m.moduleKey) ?? null;
     return {
       sessionId: session.id,
       user: {
@@ -99,8 +104,13 @@ export class SessionService {
         name: user.name,
         tenantId: user.tenantId,
         isPlatformAdmin: user.isPlatformAdmin,
-        isTenantAdmin: user.isTenantAdmin,
-        modules: user.tenant ? effectiveModules(user.tenant.modules.map((m) => m.moduleKey)) : [],
+        modules: licensed ? effectiveModules(licensed) : [],
+        access: licensed
+          ? buildSessionAccess(
+              licensed,
+              user.userRoles.map((ur) => ur.role),
+            )
+          : NO_ACCESS,
       },
     };
   }

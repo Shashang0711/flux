@@ -26,11 +26,21 @@ describe('Tenant isolation (e2e)', () => {
 
   beforeEach(async () => {
     await resetDatabase(prisma);
-    tenantA = (await createTenant(prisma, { slug: 'tenant-a' })).id;
-    tenantB = (await createTenant(prisma, { slug: 'tenant-b' })).id;
-    await createUser(prisma, { email: 'admin@a.test', tenantId: tenantA, isTenantAdmin: true });
+    const a = await createTenant(prisma, { slug: 'tenant-a' });
+    const b = await createTenant(prisma, { slug: 'tenant-b' });
+    tenantA = a.id;
+    tenantB = b.id;
+    await createUser(prisma, {
+      email: 'admin@a.test',
+      tenantId: tenantA,
+      roleIds: [a.adminRoleId],
+    });
     await createUser(prisma, { email: 'alice@a.test', tenantId: tenantA });
-    await createUser(prisma, { email: 'admin@b.test', tenantId: tenantB, isTenantAdmin: true });
+    await createUser(prisma, {
+      email: 'admin@b.test',
+      tenantId: tenantB,
+      roleIds: [b.adminRoleId],
+    });
     bobId = (await createUser(prisma, { email: 'bob@b.test', tenantId: tenantB })).id;
     adminACookie = await loginCookie(app, 'admin@a.test');
   });

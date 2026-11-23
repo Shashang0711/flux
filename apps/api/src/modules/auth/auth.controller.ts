@@ -76,7 +76,7 @@ export class AuthController {
 
   @Get('me')
   me(@CurrentUser() user: AuthUser): Promise<SessionInfo> {
-    return this.auth.me(user.id);
+    return this.auth.me(user);
   }
 
   @Post('change-password')

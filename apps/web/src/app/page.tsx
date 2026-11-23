@@ -1,4 +1,4 @@
-import { MODULES, type HealthStatus } from '@flux/shared';
+import { MODULES, PORTALS, type HealthStatus } from '@flux/shared';
 import { LogoutButton } from '@/components/logout-button';
 import { ApiError, apiFetch } from '@/lib/api';
 import { requireSession } from '@/lib/server-api';
@@ -14,7 +14,7 @@ async function loadHealth(): Promise<{ health?: HealthStatus; error?: string }> 
 }
 
 export default async function HomePage() {
-  const { user, tenant, modules } = await requireSession();
+  const { user, tenant, access } = await requireSession();
   const { health, error } = await loadHealth();
 
   return (
@@ -39,22 +39,42 @@ export default async function HomePage() {
           <span>{tenant ? tenant.name : 'FLUX platform'}</span>
         </div>
         <div className={styles.row}>
-          <span className={styles.label}>Access</span>
-          <span>
+          <span className={styles.label}>Roles</span>
+          <span className={styles.modules}>
             {user.isPlatformAdmin
               ? 'Platform administrator'
-              : user.isTenantAdmin
-                ? 'Organisation administrator'
-                : 'Standard user'}
+              : user.roles.length > 0
+                ? user.roles.map((r) => r.name).join(', ')
+                : 'No roles assigned'}
           </span>
         </div>
         {tenant && (
-          <div className={styles.row}>
-            <span className={styles.label}>Modules</span>
-            <span className={styles.modules}>
-              {modules.map((key) => MODULES.find((m) => m.key === key)?.name ?? key).join(', ')}
-            </span>
-          </div>
+          <>
+            <div className={styles.row}>
+              <span className={styles.label}>Portals</span>
+              <span>
+                {access.portals.length > 0
+                  ? access.portals
+                      .map((key) => PORTALS.find((p) => p.key === key)?.name ?? key)
+                      .join(', ')
+                  : 'None'}
+              </span>
+            </div>
+            <div className={styles.row}>
+              <span className={styles.label}>Modules</span>
+              <span className={styles.modules}>
+                {access.modules.length > 0
+                  ? access.modules
+                      .map((key) => MODULES.find((m) => m.key === key)?.name ?? key)
+                      .join(', ')
+                  : 'None'}
+              </span>
+            </div>
+            <div className={styles.row}>
+              <span className={styles.label}>Permissions</span>
+              <span>{access.permissions.length}</span>
+            </div>
+          </>
         )}
       </section>
 
