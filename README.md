@@ -113,6 +113,30 @@ infrastructure in `apps/api/src/common`.
 - **Behind a proxy**, set `TRUST_PROXY` so the API sees real client IPs (the default `loopback`
   covers a Next.js server on the same host).
 
+## Web app
+
+Signed-in pages live under `apps/web/src/app/(app)/`. Its layout validates the session once and
+renders the shell: a sidebar built from `lib/navigation.ts`, showing only what the user may access.
+
+| Path                    | Who                | Purpose                                    |
+| ----------------------- | ------------------ | ------------------------------------------ |
+| `/`                     | Everyone signed in | Dashboard                                  |
+| `/account`              | Everyone signed in | Profile and change password                |
+| `/platform/tenants/...` | Platform admins    | Tenants: list, create, modules, suspend    |
+| `/admin/users/...`      | `user.view`        | Users: list, create, roles, disable, reset |
+| `/admin/roles/...`      | `role.view`        | Roles: tabs from the spec, clone           |
+
+Conventions for new screens:
+
+- Pages are Server Components that load data with `loadOrNotFound()` and check access with
+  `sessionWithPermission()` (render `<Forbidden />` if not allowed). The API enforces the same
+  permissions regardless.
+- Mutations are small Client Components using `useMutation()` + `apiFetch()`; field errors from
+  the API appear next to their inputs automatically (`fieldErrors()`).
+- Add the screen to `NAVIGATION` with the permission that gates it.
+- Styling: CSS variables and shared classes in `globals.css` (`.btn`, `.card`, `.table`, `.field`,
+  `.badge`, …), CSS modules for anything page-specific; light and dark themes follow the OS.
+
 ## Tenancy
 
 Users belong to exactly one tenant, except **platform admins**, who belong to none
