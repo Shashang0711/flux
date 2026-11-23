@@ -1,5 +1,5 @@
 import { MODULES, PORTALS, type HealthStatus } from '@flux/shared';
-import { LogoutButton } from '@/components/logout-button';
+import { PageHeader } from '@/components/page-header';
 import { ApiError, apiFetch } from '@/lib/api';
 import { requireSession } from '@/lib/server-api';
 import styles from './page.module.css';
@@ -18,14 +18,11 @@ export default async function HomePage() {
   const { health, error } = await loadHealth();
 
   return (
-    <main className={styles.main}>
-      <header className={styles.header}>
-        <div>
-          <h1 className={styles.title}>FLUX</h1>
-          <p className={styles.subtitle}>Fluid &amp; Laboratory Unified eXchange</p>
-        </div>
-        <LogoutButton className={styles.secondaryButton} />
-      </header>
+    <div className={styles.main}>
+      <PageHeader
+        title={`Welcome, ${user.name.split(' ')[0]}`}
+        description="Fluid & Laboratory Unified eXchange"
+      />
 
       <section className={styles.card} aria-label="Signed-in user">
         <div className={styles.row}>
@@ -96,6 +93,6 @@ export default async function HomePage() {
           )}
         </div>
       </section>
-    </main>
+    </div>
   );
 }

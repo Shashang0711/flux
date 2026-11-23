@@ -1,7 +1,7 @@
 import 'server-only';
 import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
-import { SESSION_COOKIE_NAME, type SessionInfo } from '@flux/shared';
+import { notFound, redirect } from 'next/navigation';
+import { SESSION_COOKIE_NAME, type PermissionKey, type SessionInfo } from '@flux/shared';
 import { ApiError, apiFetch, type ApiResult } from './api';
 
 /** apiFetch for Server Components: forwards the caller's session cookie to the API. */
@@ -35,4 +35,27 @@ export async function requireSession(): Promise<SessionInfo> {
   const session = await getSession();
   if (!session) redirect('/login');
   return session;
+}
+
+/**
+ * Page guard: the session if the user holds every permission, otherwise null (render
+ * <Forbidden />). The API enforces the same permissions on every call regardless.
+ */
+export async function sessionWithPermission(
+  ...permissions: PermissionKey[]
+): Promise<{ session: SessionInfo; allowed: boolean }> {
+  const session = await requireSession();
+  const allowed = permissions.every((p) => session.access.permissions.includes(p));
+  return { session, allowed };
+}
+
+/** Loads data for a page: 401 → sign-in, 404 → not-found page, anything else throws. */
+export async function loadOrNotFound<T>(path: string): Promise<{ data: T; meta?: unknown }> {
+  try {
+    return await serverApiFetch<T>(path);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) redirect('/login');
+    if (err instanceof ApiError && (err.status === 404 || err.status === 400)) notFound();
+    throw err;
+  }
 }
