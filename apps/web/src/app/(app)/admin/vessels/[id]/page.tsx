@@ -1,5 +1,11 @@
 import type { Metadata } from 'next';
-import type { AuditLogDto, VesselDto } from '@flux/shared';
+import type {
+  AuditLogDto,
+  ClientSummaryDto,
+  ReferenceItemDto,
+  VesselDto,
+  VesselRelationshipDto,
+} from '@flux/shared';
 import { AuditTable } from '@/components/audit-table';
 import { StatusBadge } from '@/components/badges';
 import { Forbidden } from '@/components/forbidden';
@@ -9,6 +15,7 @@ import { readParams } from '@/components/pagination';
 import { loadOrNotFound, sessionWithPermission } from '@/lib/server-api';
 import { loadVesselFormOptions } from '../load-options';
 import { VesselForm } from '../vessel-form';
+import { VesselClients } from './vessel-clients';
 import { VesselStatusCard } from './vessel-status';
 
 export const metadata: Metadata = { title: 'Vessel · FLUX' };
@@ -27,9 +34,10 @@ export default async function VesselPage({
   const canManage = permissions.includes('vessel.manage');
   const tabs = [
     { key: 'overview', name: 'Overview' },
+    ...(session.modules.includes('clients') ? [{ key: 'clients', name: 'Clients' }] : []),
     ...(permissions.includes('audit.view') ? [{ key: 'audit', name: 'Audit' }] : []),
   ];
-  const requested = readParams(await searchParams, ['tab'] as const).tab;
+  const { tab: requested, ended } = readParams(await searchParams, ['tab', 'ended'] as const);
   const tab = tabs.find((t) => t.key === requested)?.key ?? 'overview';
 
   const { data: vessel } = await loadOrNotFound<VesselDto>(`/vessels/${id}`);
@@ -65,6 +73,35 @@ export default async function VesselPage({
           </section>
           {canManage && <VesselStatusCard vessel={vessel} />}
         </>
+      )}
+      {tab === 'clients' && (
+        <VesselClients
+          vessel={vessel}
+          relationships={
+            (
+              await loadOrNotFound<VesselRelationshipDto[]>(
+                `/vessels/${id}/relationships?status=${ended ? 'ALL' : 'ACTIVE'}`,
+              )
+            ).data
+          }
+          options={
+            canManage && permissions.includes('client.view')
+              ? {
+                  clients: (
+                    await loadOrNotFound<ClientSummaryDto[]>('/clients?status=ACTIVE&pageSize=100')
+                  ).data,
+                  relationshipTypes: (
+                    await loadOrNotFound<ReferenceItemDto[]>(
+                      '/reference-data/vessel-relationship-type',
+                    )
+                  ).data,
+                }
+              : null
+          }
+          canManage={canManage}
+          canManageFleets={permissions.includes('fleet.manage')}
+          showEnded={Boolean(ended)}
+        />
       )}
       {tab === 'audit' && (
         <section className="card">

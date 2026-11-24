@@ -50,6 +50,9 @@ model Tenant {
   billingParties  BillingParty[]
   customFields    CustomFieldDefinition[]
   vessels         Vessel[]
+  relationships   VesselClientRelationship[]
+  fleets          Fleet[]
+  fleetVessels    FleetVessel[]
 
   @@map("tenants")
 }
@@ -271,10 +274,11 @@ model ReferenceItem {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  tenant         Tenant?               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  hiddenBy       ReferenceItemHidden[]
-  vesselsByType  Vessel[]              @relation("VesselType")
-  vesselsByClass Vessel[]              @relation("VesselClass")
+  tenant              Tenant?                    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  hiddenBy            ReferenceItemHidden[]
+  vesselsByType       Vessel[]                   @relation("VesselType")
+  vesselsByClass      Vessel[]                   @relation("VesselClass")
+  relationshipsByType VesselClientRelationship[] @relation("RelationshipType")
 
   /// Lets domain tables use a typed composite FK (item id + list key), e.g. vessel → vessel-type.
   @@unique([id, listKey])
@@ -347,6 +351,10 @@ model Client {
   addresses      ClientAddress[]
   contacts       ClientContact[]
   billingParties BillingParty[]
+
+  relationships VesselClientRelationship[]
+  fleets        Fleet[]
+  fleetVessels  FleetVessel[]
 
   @@unique([tenantId, code])
   @@unique([id, tenantId])
@@ -500,9 +508,99 @@ model Vessel {
   vesselType            ReferenceItem? @relation("VesselType", fields: [vesselTypeId, vesselTypeList], references: [id, listKey], onDelete: Restrict)
   classificationSociety ReferenceItem? @relation("VesselClass", fields: [classificationSocietyId, classificationSocietyList], references: [id, listKey], onDelete: Restrict)
 
+  relationships VesselClientRelationship[]
+
   @@unique([tenantId, code])
   @@unique([tenantId, imoNumber])
   @@unique([id, tenantId])
   @@index([tenantId, name])
   @@map("vessels")
+}
+
+// ─── Vessel–client relationships and fleets (M7) ────────────────────────────
+// Design pack §14: one vessel master, linked to clients through relationships; fleets belong to
+// a client and a vessel joins a fleet through its relationship with that client.
+
+enum RelationshipStatus {
+  ACTIVE
+  ENDED
+}
+
+enum FleetStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model VesselClientRelationship {
+  id                   String             @id @default(uuid()) @db.Uuid
+  tenantId             String             @map("tenant_id") @db.Uuid
+  vesselId             String             @map("vessel_id") @db.Uuid
+  clientId             String             @map("client_id") @db.Uuid
+  relationshipTypeId   String             @map("relationship_type_id") @db.Uuid
+  relationshipTypeList String             @default("vessel-relationship-type") @map("relationship_type_list")
+  /// At most one active primary relationship per vessel (partial unique index).
+  isPrimary            Boolean            @default(false) @map("is_primary")
+  status               RelationshipStatus @default(ACTIVE)
+  startDate            DateTime?          @map("start_date") @db.Date
+  endDate              DateTime?          @map("end_date") @db.Date
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  tenant           Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  vessel           Vessel        @relation(fields: [vesselId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  client           Client        @relation(fields: [clientId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  relationshipType ReferenceItem @relation("RelationshipType", fields: [relationshipTypeId, relationshipTypeList], references: [id, listKey], onDelete: Restrict)
+  fleetMemberships FleetVessel[]
+
+  @@unique([id, tenantId])
+  /// Target for fleet_vessels, pinning a membership to this relationship's vessel and client.
+  @@unique([id, vesselId, clientId])
+  @@index([vesselId])
+  @@index([clientId])
+  @@map("vessel_client_relationships")
+}
+
+model Fleet {
+  id        String      @id @default(uuid()) @db.Uuid
+  tenantId  String      @map("tenant_id") @db.Uuid
+  clientId  String      @map("client_id") @db.Uuid
+  /// Generated per tenant: FL-00001.
+  code      String
+  /// Unique per client, ignoring case (expression index).
+  name      String
+  status    FleetStatus @default(ACTIVE)
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  tenant  Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client  Client        @relation(fields: [clientId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  members FleetVessel[]
+
+  @@unique([tenantId, code])
+  /// Target for fleet_vessels, pinning a membership to this fleet's client.
+  @@unique([id, clientId])
+  @@index([clientId])
+  @@map("fleets")
+}
+
+/// A vessel in a fleet, through its relationship with the fleet's client. Composite FKs make the
+/// fleet and the relationship belong to the same client; removed_at keeps history.
+model FleetVessel {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  fleetId        String    @map("fleet_id") @db.Uuid
+  clientId       String    @map("client_id") @db.Uuid
+  vesselId       String    @map("vessel_id") @db.Uuid
+  relationshipId String    @map("relationship_id") @db.Uuid
+  assignedAt     DateTime  @default(now()) @map("assigned_at")
+  removedAt      DateTime? @map("removed_at")
+
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client       Client                   @relation(fields: [clientId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  fleet        Fleet                    @relation(fields: [fleetId, clientId], references: [id, clientId], onDelete: Restrict, onUpdate: NoAction)
+  relationship VesselClientRelationship @relation(fields: [relationshipId, vesselId, clientId], references: [id, vesselId, clientId], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([fleetId])
+  @@index([relationshipId])
+  @@map("fleet_vessels")
 }

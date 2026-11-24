@@ -1,5 +1,11 @@
 import type { Metadata } from 'next';
-import type { AuditLogDto, ClientDto, CustomFieldDefinitionDto } from '@flux/shared';
+import type {
+  AuditLogDto,
+  ClientDto,
+  CustomFieldDefinitionDto,
+  FleetDto,
+  VesselRelationshipDto,
+} from '@flux/shared';
 import { AuditTable } from '@/components/audit-table';
 import { StatusBadge } from '@/components/badges';
 import { Forbidden } from '@/components/forbidden';
@@ -7,6 +13,7 @@ import { ListTabs } from '@/components/list-tabs';
 import { PageHeader } from '@/components/page-header';
 import { readParams } from '@/components/pagination';
 import { loadOrNotFound, sessionWithPermission } from '@/lib/server-api';
+import { ClientFleets, ClientVessels } from './client-fleets';
 import { Addresses, BillingParties, Contacts, Overview } from './client-tabs';
 
 export const metadata: Metadata = { title: 'Client · FLUX' };
@@ -29,6 +36,12 @@ export default async function ClientPage({
     { key: 'addresses', name: 'Addresses' },
     { key: 'contacts', name: 'Contacts' },
     { key: 'billing', name: 'Billing Parties' },
+    ...(session.modules.includes('vessels') && permissions.includes('vessel.view')
+      ? [
+          { key: 'vessels', name: 'Vessels' },
+          { key: 'fleets', name: 'Fleets' },
+        ]
+      : []),
     ...(permissions.includes('audit.view') ? [{ key: 'audit', name: 'Audit' }] : []),
   ];
   const requested = readParams(await searchParams, ['tab'] as const).tab;
@@ -69,6 +82,20 @@ export default async function ClientPage({
       {tab === 'addresses' && <Addresses client={client} canManage={canManage} />}
       {tab === 'contacts' && <Contacts client={client} canManage={canManage} />}
       {tab === 'billing' && <BillingParties client={client} canManage={canManage} />}
+      {tab === 'vessels' && (
+        <ClientVessels
+          relationships={
+            (await loadOrNotFound<VesselRelationshipDto[]>(`/clients/${id}/vessels`)).data
+          }
+        />
+      )}
+      {tab === 'fleets' && (
+        <ClientFleets
+          client={client}
+          fleets={(await loadOrNotFound<FleetDto[]>(`/clients/${id}/fleets`)).data}
+          canManage={permissions.includes('fleet.manage')}
+        />
+      )}
       {tab === 'audit' && (
         <section className="card">
           <AuditTable entries={history} showEntity={false} linkEntities={false} />
