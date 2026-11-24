@@ -1,4 +1,5 @@
-import type { ClientDto } from '@flux/shared';
+import type { ClientDto, CustomFieldDefinitionDto } from '@flux/shared';
+import { CustomFieldInputs, customFieldPayload } from '@/components/custom-field-inputs';
 import { Field } from '@/components/field';
 
 /** Client master fields, shared by the New client form and the Overview tab. */
@@ -6,10 +7,13 @@ export function ClientFields({
   client,
   fields,
   disabled,
+  customFields = [],
 }: {
   client?: ClientDto;
   fields: Record<string, string>;
   disabled?: boolean;
+  /** Active custom field definitions for clients. */
+  customFields?: CustomFieldDefinitionDto[];
 }) {
   const input = (name: keyof ClientDto, label: string, type = 'text', hint?: string) => (
     <Field label={label} htmlFor={name} error={fields[name]} hint={hint}>
@@ -46,11 +50,17 @@ export function ClientFields({
           disabled={disabled}
         />
       </Field>
+      <CustomFieldInputs
+        definitions={customFields}
+        values={client?.customFields}
+        fields={fields}
+        disabled={disabled}
+      />
     </>
   );
 }
 
-export function clientPayload(data: FormData) {
+export function clientPayload(data: FormData, customFields: CustomFieldDefinitionDto[] = []) {
   const value = (key: string) => String(data.get(key) ?? '');
   return {
     name: value('name'),
@@ -60,5 +70,6 @@ export function clientPayload(data: FormData) {
     website: value('website'),
     taxNumber: value('taxNumber'),
     notes: value('notes'),
+    ...(customFields.length > 0 ? { customFields: customFieldPayload(data, customFields) } : {}),
   };
 }

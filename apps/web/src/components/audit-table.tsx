@@ -37,6 +37,10 @@ const FIELD_LABELS: Record<string, string> = {
   contact: 'Contact',
   address: 'Address',
   billingParty: 'Billing party',
+  key: 'Key',
+  required: 'Required',
+  helpText: 'Help text',
+  options: 'Options',
 };
 
 function show(value: unknown): string {

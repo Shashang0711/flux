@@ -1,0 +1,288 @@
+'use client';
+
+import { useState, type FormEvent } from 'react';
+import {
+  CUSTOM_FIELD_TYPES,
+  customFieldKeyFromLabel,
+  type CustomFieldDefinitionDto,
+  type CustomFieldOption,
+  type CustomFieldType,
+} from '@flux/shared';
+import { Badge } from '@/components/badges';
+import { Field, FormStatus } from '@/components/field';
+import { useMutation } from '@/hooks/use-mutation';
+import { apiFetch } from '@/lib/api';
+import styles from './custom-fields.module.css';
+
+const typeName = (type: CustomFieldType) =>
+  CUSTOM_FIELD_TYPES.find((t) => t.key === type)?.name ?? type;
+
+/**
+ * Dropdown options are edited one per line: "Label", or "value = Label" to keep a value fixed.
+ * Values default to a key derived from the label, so existing options keep their values.
+ */
+function parseOptions(text: string, existing: CustomFieldOption[] = []): CustomFieldOption[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [left, ...rest] = line.split('=');
+      if (rest.length > 0) return { value: left!.trim(), label: rest.join('=').trim() };
+      const match = existing.find((o) => o.label === line);
+      return { value: match?.value ?? customFieldKeyFromLabel(line), label: line };
+    });
+}
+
+function optionsText(options: CustomFieldOption[]): string {
+  return options.map((o) => `${o.value} = ${o.label}`).join('\n');
+}
+
+export function AddCustomField({ entity }: { entity: string }) {
+  const { pending, error, fields, run } = useMutation();
+  const [type, setType] = useState<CustomFieldType>('TEXT');
+  const [label, setLabel] = useState('');
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const help = String(data.get('helpText') ?? '').trim();
+    await run(
+      () =>
+        apiFetch('/custom-fields', {
+          method: 'POST',
+          body: JSON.stringify({
+            entity,
+            label: data.get('label'),
+            type,
+            required: data.get('required') === 'on',
+            helpText: help || null,
+            options: type === 'SELECT' ? parseOptions(String(data.get('options') ?? '')) : [],
+            sortOrder: Number(data.get('sortOrder') || 0),
+          }),
+        }),
+      {
+        onSuccess: () => {
+          form.reset();
+          setType('TEXT');
+          setLabel('');
+        },
+      },
+    );
+  }
+
+  return (
+    <section className="card">
+      <h2 className="card-title">Add a field</h2>
+      <form className="form" onSubmit={onSubmit} noValidate>
+        <div className="grid-2">
+          <Field
+            label="Label"
+            htmlFor="cf-new-label"
+            hint={label ? `Key: ${customFieldKeyFromLabel(label)}` : 'Shown on forms'}
+            error={fields.label}
+          >
+            <input
+              className="input"
+              id="cf-new-label"
+              name="label"
+              required
+              onChange={(e) => setLabel(e.target.value)}
+            />
+          </Field>
+          <Field label="Type" htmlFor="cf-new-type">
+            <select
+              className="select"
+              id="cf-new-type"
+              value={type}
+              onChange={(e) => setType(e.target.value as CustomFieldType)}
+            >
+              {CUSTOM_FIELD_TYPES.map((t) => (
+                <option key={t.key} value={t.key}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        {type === 'SELECT' && (
+          <Field
+            label="Options"
+            htmlFor="cf-new-options"
+            hint="One per line"
+            error={fields.options}
+          >
+            <textarea className="textarea" id="cf-new-options" name="options" rows={4} />
+          </Field>
+        )}
+        <div className="grid-2">
+          <Field label="Help text" htmlFor="cf-new-help" error={fields.helpText}>
+            <input className="input" id="cf-new-help" name="helpText" />
+          </Field>
+          <Field label="Sort order" htmlFor="cf-new-sort" hint="Lower numbers are shown first">
+            <input
+              className="input"
+              id="cf-new-sort"
+              name="sortOrder"
+              type="number"
+              min={0}
+              defaultValue={0}
+            />
+          </Field>
+        </div>
+        <label className="check">
+          <input type="checkbox" name="required" /> Required when creating a record
+        </label>
+        <FormStatus error={error} fields={fields} />
+        <div className="form-actions">
+          <button className="btn btn-primary" type="submit" disabled={pending}>
+            {pending ? 'Adding…' : 'Add field'}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function EditField({ def }: { def: CustomFieldDefinitionDto }) {
+  const { pending, error, fields, success, run } = useMutation();
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const help = String(data.get('helpText') ?? '').trim();
+    await run(
+      () =>
+        apiFetch(`/custom-fields/${def.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            label: data.get('label'),
+            required: data.get('required') === 'on',
+            helpText: help || null,
+            sortOrder: Number(data.get('sortOrder') || 0),
+            isActive: data.get('isActive') === 'on',
+            ...(def.type === 'SELECT'
+              ? { options: parseOptions(String(data.get('options') ?? ''), def.options) }
+              : {}),
+          }),
+        }),
+      { success: 'Saved.' },
+    );
+  }
+  const id = (f: string) => `cf-${def.id}-${f}`;
+  return (
+    <details className={styles.edit}>
+      <summary className="btn">Edit</summary>
+      <form className={`form ${styles.editForm}`} onSubmit={onSubmit} noValidate>
+        <Field label="Label" htmlFor={id('label')} error={fields.label}>
+          <input
+            className="input"
+            id={id('label')}
+            name="label"
+            defaultValue={def.label}
+            required
+          />
+        </Field>
+        {def.type === 'SELECT' && (
+          <Field
+            label="Options"
+            htmlFor={id('options')}
+            hint="value = Label, one per line"
+            error={fields.options}
+          >
+            <textarea
+              className="textarea"
+              id={id('options')}
+              name="options"
+              rows={4}
+              defaultValue={optionsText(def.options)}
+            />
+          </Field>
+        )}
+        <Field label="Help text" htmlFor={id('help')}>
+          <input
+            className="input"
+            id={id('help')}
+            name="helpText"
+            defaultValue={def.helpText ?? ''}
+          />
+        </Field>
+        <Field label="Sort order" htmlFor={id('sort')}>
+          <input
+            className="input"
+            id={id('sort')}
+            name="sortOrder"
+            type="number"
+            min={0}
+            defaultValue={def.sortOrder}
+          />
+        </Field>
+        <label className="check">
+          <input type="checkbox" name="required" defaultChecked={def.required} /> Required
+        </label>
+        <label className="check">
+          <input type="checkbox" name="isActive" defaultChecked={def.isActive} /> Active
+        </label>
+        <FormStatus error={error} fields={fields} success={success} />
+        <div className="form-actions">
+          <button className="btn btn-primary" type="submit" disabled={pending}>
+            {pending ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </form>
+    </details>
+  );
+}
+
+export function CustomFieldList({ definitions }: { definitions: CustomFieldDefinitionDto[] }) {
+  return (
+    <div className="table-wrap">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Label</th>
+            <th>Key</th>
+            <th>Type</th>
+            <th>Rules</th>
+            <th aria-label="Actions" />
+          </tr>
+        </thead>
+        <tbody>
+          {definitions.length === 0 && (
+            <tr>
+              <td colSpan={5} className="muted">
+                No custom fields yet.
+              </td>
+            </tr>
+          )}
+          {definitions.map((def) => (
+            <tr key={def.id} className={def.isActive ? undefined : styles.inactive}>
+              <td>
+                {def.label}
+                {def.helpText && <span className={styles.sub}>{def.helpText}</span>}
+              </td>
+              <td>
+                <code>{def.key}</code>
+              </td>
+              <td>
+                {typeName(def.type)}
+                {def.type === 'SELECT' && (
+                  <span className={styles.sub}>{def.options.map((o) => o.label).join(', ')}</span>
+                )}
+              </td>
+              <td>
+                <span className="row">
+                  {def.required && <Badge tone="brand">Required</Badge>}
+                  {!def.isActive && <Badge>Inactive</Badge>}
+                </span>
+              </td>
+              <td className={styles.actions}>
+                <EditField def={def} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

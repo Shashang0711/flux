@@ -188,7 +188,7 @@ function EditItem({ item, apiPath }: { item: ReferenceItemDto; apiPath: string }
         <label className="check">
           <input type="checkbox" name="isActive" defaultChecked={item.isActive} /> Active
         </label>
-        <FormStatus error={Object.keys(fields).length > 0 ? null : error} success={success} />
+        <FormStatus error={error} fields={fields} success={success} />
         <div className="form-actions">
           <button className="btn btn-primary" type="submit" disabled={pending}>
             {pending ? 'Saving…' : 'Save'}
@@ -259,7 +259,7 @@ function AddItemForm({
           />
         </Field>
         <div className={styles.addActions}>
-          <FormStatus error={Object.keys(fields).length > 0 ? null : error} />
+          <FormStatus error={error} fields={fields} />
           <button className="btn btn-primary" type="submit" disabled={pending}>
             {pending ? 'Adding…' : 'Add'}
           </button>

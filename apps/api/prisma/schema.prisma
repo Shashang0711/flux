@@ -48,6 +48,7 @@ model Tenant {
   clientAddresses ClientAddress[]
   clientContacts  ClientContact[]
   billingParties  BillingParty[]
+  customFields    CustomFieldDefinition[]
 
   @@map("tenants")
 }
@@ -322,20 +323,22 @@ enum AddressType {
 }
 
 model Client {
-  id          String       @id @default(uuid()) @db.Uuid
-  tenantId    String       @map("tenant_id") @db.Uuid
+  id           String       @id @default(uuid()) @db.Uuid
+  tenantId     String       @map("tenant_id") @db.Uuid
   /// Generated per tenant: CL-00001.
-  code        String
-  name        String
-  tradingName String?      @map("trading_name")
-  email       String?
-  phone       String?
-  website     String?
-  taxNumber   String?      @map("tax_number")
-  notes       String?
-  status      ClientStatus @default(ACTIVE)
-  createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @updatedAt @map("updated_at")
+  code         String
+  name         String
+  tradingName  String?      @map("trading_name")
+  email        String?
+  phone        String?
+  website      String?
+  taxNumber    String?      @map("tax_number")
+  notes        String?
+  /// Tenant-defined fields { key: value }, validated against custom_field_definitions.
+  customFields Json         @default("{}") @map("custom_fields")
+  status       ClientStatus @default(ACTIVE)
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
 
   tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   addresses      ClientAddress[]
@@ -420,4 +423,40 @@ model BillingParty {
   @@index([clientId])
   @@index([tenantId])
   @@map("billing_parties")
+}
+
+// ─── Custom fields (M5b) ────────────────────────────────────────────────────
+
+enum CustomFieldType {
+  TEXT
+  LONG_TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+  SELECT
+}
+
+/// A tenant-defined field on a record type (entity). Values live in the record's
+/// custom_fields JSON column under `key`. key, entity and type never change after creation.
+model CustomFieldDefinition {
+  id        String          @id @default(uuid()) @db.Uuid
+  tenantId  String          @map("tenant_id") @db.Uuid
+  entity    String
+  key       String
+  label     String
+  type      CustomFieldType
+  required  Boolean         @default(false)
+  helpText  String?         @map("help_text")
+  /// [{ value, label }] for SELECT fields.
+  options   Json            @default("[]")
+  sortOrder Int             @default(0) @map("sort_order")
+  isActive  Boolean         @default(true) @map("is_active")
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, entity, key])
+  @@index([tenantId, entity])
+  @@map("custom_field_definitions")
 }

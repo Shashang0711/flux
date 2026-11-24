@@ -429,7 +429,7 @@ export function CloneRoleButton({ role }: { role: RoleDto }) {
                 <input type="checkbox" name="copyPermissions" defaultChecked /> Role permissions
               </label>
             </fieldset>
-            <FormStatus error={Object.keys(fields).length > 0 ? null : error} />
+            <FormStatus error={error} fields={fields} />
             <div className="form-actions">
               <button className="btn btn-primary" type="submit" disabled={pending}>
                 {pending ? 'Cloning…' : 'Clone'}

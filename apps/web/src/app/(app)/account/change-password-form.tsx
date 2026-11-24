@@ -76,7 +76,7 @@ export function ChangePasswordForm() {
           required
         />
       </Field>
-      <FormStatus error={Object.keys(fields).length > 0 ? null : error} success={success} />
+      <FormStatus error={error} fields={fields} success={success} />
       <div className="form-actions">
         <button className="btn btn-primary" type="submit" disabled={pending}>
           {pending ? 'Saving…' : 'Change password'}

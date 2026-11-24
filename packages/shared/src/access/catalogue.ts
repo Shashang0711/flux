@@ -48,6 +48,11 @@ export const PERMISSIONS = [
     module: 'administration',
     name: 'Manage reference data (add own items, hide FLUX defaults)',
   },
+  {
+    key: 'custom-field.manage',
+    module: 'administration',
+    name: 'Define custom fields for records',
+  },
 
   // Clients
   { key: 'client.view', module: 'clients', name: 'View clients' },

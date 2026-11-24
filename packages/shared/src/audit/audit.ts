@@ -42,12 +42,23 @@ export const AUDIT_ACTIONS = {
   'client.contact_removed': 'Contact removed',
   'client.billing_party_added': 'Billing party added',
   'client.billing_party_updated': 'Billing party updated',
+  'custom-field.created': 'Custom field created',
+  'custom-field.updated': 'Custom field updated',
+  'custom-field.activated': 'Custom field activated',
+  'custom-field.deactivated': 'Custom field deactivated',
 } as const;
 
 export type AuditAction = keyof typeof AUDIT_ACTIONS;
 export const AUDIT_ACTION_KEYS = Object.keys(AUDIT_ACTIONS) as [AuditAction, ...AuditAction[]];
 
-export const AUDIT_ENTITY_TYPES = ['tenant', 'user', 'role', 'reference-item', 'client'] as const;
+export const AUDIT_ENTITY_TYPES = [
+  'tenant',
+  'user',
+  'role',
+  'reference-item',
+  'client',
+  'custom-field',
+] as const;
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
 
 /** A scalar field that changed (from is null on creation). */

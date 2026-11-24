@@ -5,6 +5,7 @@ import type {
   ClientContactDto,
   ClientDto,
   ClientSummaryDto,
+  CustomFieldValues,
 } from '@flux/shared';
 
 export const BILLING_PARTY_ORDER: Prisma.BillingPartyOrderByWithRelationInput[] = [
@@ -94,6 +95,7 @@ export function toClientDto(
     website: c.website,
     taxNumber: c.taxNumber,
     notes: c.notes,
+    customFields: (c.customFields as CustomFieldValues) ?? {},
     addresses: c.addresses.map(toAddressDto),
     contacts: c.contacts.map(toContactDto),
     billingParties: c.billingParties.map(toBillingPartyDto),
