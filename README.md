@@ -61,15 +61,16 @@ and manages the organisation's users and roles from there.
 
 ## Scripts (from the repo root)
 
-| Script                            | What it does                                          |
-| --------------------------------- | ----------------------------------------------------- |
-| `npm run dev`                     | API (watch) and web (dev server) together             |
-| `npm run build`                   | Production build of shared → api → web                |
-| `npm run lint` / `typecheck`      | ESLint and TypeScript across all workspaces           |
-| `npm run format` / `format:check` | Prettier                                              |
-| `npm test`                        | Unit + HTTP-pipeline tests (no database needed)       |
-| `npm run test:e2e`                | API end-to-end tests against `<DATABASE_URL db>_test` |
-| `npm run db:migrate` / `db:seed`  | Prisma migrations (dev) and idempotent seed           |
+| Script                              | What it does                                          |
+| ----------------------------------- | ----------------------------------------------------- |
+| `npm run dev`                       | API (watch) and web (dev server) together             |
+| `npm run build`                     | Production build of shared → api → web                |
+| `npm run lint` / `typecheck`        | ESLint and TypeScript across all workspaces           |
+| `npm run format` / `format:check`   | Prettier                                              |
+| `npm test`                          | Unit + HTTP-pipeline tests (no database needed)       |
+| `npm run test:e2e`                  | API end-to-end tests against `<DATABASE_URL db>_test` |
+| `npm run db:migrate` / `db:seed`    | Prisma migrations (dev) and idempotent seed           |
+| `npm run test:browser -w @flux/web` | Browser tests against a running stack (see below)     |
 
 ## API conventions
 
@@ -141,9 +142,47 @@ Conventions for new screens:
   permissions regardless.
 - Mutations are small Client Components using `useMutation()` + `apiFetch()`; field errors from
   the API appear next to their inputs automatically (`fieldErrors()`).
-- Add the screen to `NAVIGATION` with the permission that gates it.
-- Styling: CSS variables and shared classes in `globals.css` (`.btn`, `.card`, `.table`, `.field`,
-  `.badge`, …), CSS modules for anything page-specific; light and dark themes follow the OS.
+- Add the screen to `NAVIGATION` with the permission and an icon (`components/icons.tsx`).
+
+### Design system and responsive layout
+
+Every screen must work from a 360px phone to a wide desktop without sideways scrolling.
+
+- **Tokens**: colours, radii, shadows and sizes are CSS variables on `:root` in `globals.css`
+  (`--brand`, `--surface`, `--border`, `--muted`, `--ok`/`--bad`/`--warn`, …), with dark-theme
+  overrides. Use the tokens; never hard-code colours. Shared classes: `.btn` (`.btn-primary`,
+  `.btn-danger`), `.input`/`.select`/`.textarea`, `.field`, `.form`, `.card`, `.alert-*`,
+  `.badge-*`, `.stack`, `.row`, `.grid-2` (one column on phones). CSS modules hold anything
+  page-specific.
+- **Breakpoints**: below 1024px the sidebar becomes a drawer opened from the top bar
+  (`shell-frame.tsx`: Esc/backdrop closes it, focus moves in and back, the closed drawer is
+  `inert`). Below 640px, tables become cards and controls grow to 44px touch targets.
+- **Tables**: always use `<DataTable columns rows rowKey label empty />`. Mark the title column
+  `primary` and the buttons column `actions`; on phones each row becomes a card with the column
+  headers as labels, so no column is ever hidden.
+- **Editing inside a row**: use `<EditDialog title>` (native modal `<dialog>`; a bottom sheet on
+  phones) instead of inline forms.
+- **Filters**: `<form className="toolbar">`; it wraps, and stacks on phones.
+- **Page headers and tabs**: `PageHeader` actions go full-width on phones; `ListTabs` scroll
+  sideways instead of wrapping.
+
+### Browser tests
+
+`apps/web/e2e` holds Playwright tests that run every page at 390px (phone), 768px (tablet) and
+1280px (desktop): no sideways scrolling, content starting right under the top bar, the drawer
+and navigation, edit dialogs, and core flows (create a client and edit a contact, duplicate IMO,
+sign out). Global setup creates a demo tenant (`owner@oceanic.test`) through the API, so the
+database only needs the platform admin seed. CI runs them in the `browser` job.
+
+```bash
+# with the API and web running (e.g. npm run dev) and FLUX_ADMIN_* seeded:
+npx playwright install chromium        # once (or set CHROME_PATH=/usr/bin/google-chrome)
+E2E_BASE_URL=http://localhost:3000 \
+E2E_OPERATOR_EMAIL=<FLUX_ADMIN_EMAIL> E2E_OPERATOR_PASSWORD=<FLUX_ADMIN_PASSWORD> \
+  npm run test:browser -w @flux/web
+```
+
+Add every new page to `e2e/responsive.spec.ts`.
 
 ## Tenancy
 

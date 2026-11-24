@@ -1,5 +1,6 @@
 'use client';
 
+import { EditDialog } from '@/components/edit-dialog';
 import { useState, type FormEvent } from 'react';
 import {
   CUSTOM_FIELD_TYPES,
@@ -9,6 +10,7 @@ import {
   type CustomFieldType,
 } from '@flux/shared';
 import { Badge } from '@/components/badges';
+import { DataTable } from '@/components/data-table';
 import { Field, FormStatus } from '@/components/field';
 import { useMutation } from '@/hooks/use-mutation';
 import { apiFetch } from '@/lib/api';
@@ -171,9 +173,8 @@ function EditField({ def }: { def: CustomFieldDefinitionDto }) {
   }
   const id = (f: string) => `cf-${def.id}-${f}`;
   return (
-    <details className={styles.edit}>
-      <summary className="btn">Edit</summary>
-      <form className={`form ${styles.editForm}`} onSubmit={onSubmit} noValidate>
+    <EditDialog title={`Edit field: ${def.label}`}>
+      <form className="form" onSubmit={onSubmit} noValidate>
         <Field label="Label" htmlFor={id('label')} error={fields.label}>
           <input
             className="input"
@@ -230,59 +231,55 @@ function EditField({ def }: { def: CustomFieldDefinitionDto }) {
           </button>
         </div>
       </form>
-    </details>
+    </EditDialog>
   );
 }
 
 export function CustomFieldList({ definitions }: { definitions: CustomFieldDefinitionDto[] }) {
   return (
-    <div className="table-wrap">
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Label</th>
-            <th>Key</th>
-            <th>Type</th>
-            <th>Rules</th>
-            <th aria-label="Actions" />
-          </tr>
-        </thead>
-        <tbody>
-          {definitions.length === 0 && (
-            <tr>
-              <td colSpan={5} className="muted">
-                No custom fields yet.
-              </td>
-            </tr>
-          )}
-          {definitions.map((def) => (
-            <tr key={def.id} className={def.isActive ? undefined : styles.inactive}>
-              <td>
-                {def.label}
-                {def.helpText && <span className={styles.sub}>{def.helpText}</span>}
-              </td>
-              <td>
-                <code>{def.key}</code>
-              </td>
-              <td>
-                {typeName(def.type)}
-                {def.type === 'SELECT' && (
-                  <span className={styles.sub}>{def.options.map((o) => o.label).join(', ')}</span>
-                )}
-              </td>
-              <td>
-                <span className="row">
-                  {def.required && <Badge tone="brand">Required</Badge>}
-                  {!def.isActive && <Badge>Inactive</Badge>}
-                </span>
-              </td>
-              <td className={styles.actions}>
-                <EditField def={def} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      label="Custom fields"
+      rows={definitions}
+      rowKey={(d) => d.id}
+      empty="No custom fields yet."
+      rowClassName={(d) => (d.isActive ? undefined : styles.inactive)}
+      columns={[
+        {
+          header: 'Label',
+          primary: true,
+          cell: (d) => (
+            <>
+              {d.label}
+              {d.helpText && <span className="cell-sub">{d.helpText}</span>}
+            </>
+          ),
+        },
+        { header: 'Key', cell: (d) => <code>{d.key}</code> },
+        {
+          header: 'Type',
+          cell: (d) => (
+            <>
+              {typeName(d.type)}
+              {d.type === 'SELECT' && (
+                <span className="cell-sub">{d.options.map((o) => o.label).join(', ')}</span>
+              )}
+            </>
+          ),
+        },
+        {
+          header: 'Rules',
+          cell: (d) =>
+            d.required || !d.isActive ? (
+              <span className="row">
+                {d.required && <Badge tone="brand">Required</Badge>}
+                {!d.isActive && <Badge>Inactive</Badge>}
+              </span>
+            ) : (
+              <span className="muted">Optional</span>
+            ),
+        },
+        { header: 'Actions', actions: true, cell: (d) => <EditField def={d} /> },
+      ]}
+    />
   );
 }

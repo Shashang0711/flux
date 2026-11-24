@@ -1,5 +1,6 @@
 'use client';
 
+import { EditDialog } from '@/components/edit-dialog';
 import type { FormEvent, ReactNode } from 'react';
 import {
   ADDRESS_TYPES,
@@ -10,6 +11,7 @@ import {
   type CustomFieldDefinitionDto,
 } from '@flux/shared';
 import { Badge, StatusBadge } from '@/components/badges';
+import { DataTable } from '@/components/data-table';
 import { Field, FormStatus } from '@/components/field';
 import { useMutation } from '@/hooks/use-mutation';
 import { apiFetch } from '@/lib/api';
@@ -114,12 +116,19 @@ function addressPayload(data: FormData) {
 }
 
 /** Expandable inline editor used in lists. */
-function Editor({ label, children }: { label: string; children: ReactNode }) {
+function Editor({
+  label,
+  title,
+  children,
+}: {
+  label: string;
+  title?: string;
+  children: ReactNode;
+}) {
   return (
-    <details className={styles.editor}>
-      <summary className="btn">{label}</summary>
-      <div className={styles.editorBody}>{children}</div>
-    </details>
+    <EditDialog label={label} title={title ?? label}>
+      {children}
+    </EditDialog>
   );
 }
 
@@ -288,7 +297,7 @@ export function Addresses({ client, canManage }: { client: ClientDto; canManage:
             </div>
             {canManage && (
               <div className="row">
-                <Editor label="Edit">
+                <Editor label="Edit" title="Edit address">
                   <AddressForm clientId={client.id} address={address} />
                 </Editor>
                 <button
@@ -402,60 +411,56 @@ export function Contacts({ client, canManage }: { client: ClientDto; canManage: 
   const remove = useMutation();
   return (
     <div className="stack">
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Job title</th>
-              <th>Email</th>
-              <th>Phone</th>
-              {canManage && <th aria-label="Actions" />}
-            </tr>
-          </thead>
-          <tbody>
-            {client.contacts.length === 0 && (
-              <tr>
-                <td colSpan={5} className="muted">
-                  No contacts yet.
-                </td>
-              </tr>
-            )}
-            {client.contacts.map((contact) => (
-              <tr key={contact.id}>
-                <td>
-                  {contact.name} {contact.isPrimary && <Badge tone="brand">Primary</Badge>}
-                </td>
-                <td>{contact.jobTitle ?? '—'}</td>
-                <td>{contact.email ?? '—'}</td>
-                <td>{contact.phone ?? '—'}</td>
-                {canManage && (
-                  <td className={styles.actions}>
-                    <Editor label="Edit">
-                      <ContactForm clientId={client.id} contact={contact} />
-                    </Editor>
-                    <button
-                      type="button"
-                      className="btn btn-danger"
-                      disabled={remove.pending}
-                      onClick={() =>
-                        window.confirm(`Remove ${contact.name}?`) &&
-                        remove.run(() =>
-                          apiFetch(`/clients/${client.id}/contacts/${contact.id}`, {
-                            method: 'DELETE',
-                          }),
-                        )
-                      }
-                    >
-                      Remove
-                    </button>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        label="Contacts"
+        rows={client.contacts}
+        rowKey={(c) => c.id}
+        empty="No contacts yet."
+        columns={[
+          {
+            header: 'Name',
+            primary: true,
+            cell: (c) => (
+              <>
+                {c.name} {c.isPrimary && <Badge tone="brand">Primary</Badge>}
+              </>
+            ),
+          },
+          { header: 'Job title', cell: (c) => c.jobTitle ?? '—' },
+          { header: 'Email', cell: (c) => c.email ?? '—' },
+          { header: 'Phone', cell: (c) => c.phone ?? '—' },
+          ...(canManage
+            ? [
+                {
+                  header: 'Actions',
+                  actions: true,
+                  cell: (c: ClientContactDto) => (
+                    <>
+                      <Editor label="Edit" title={`Edit ${c.name}`}>
+                        <ContactForm clientId={client.id} contact={c} />
+                      </Editor>
+                      <button
+                        type="button"
+                        className="btn btn-danger"
+                        disabled={remove.pending}
+                        onClick={() =>
+                          window.confirm(`Remove ${c.name}?`) &&
+                          remove.run(() =>
+                            apiFetch(`/clients/${client.id}/contacts/${c.id}`, {
+                              method: 'DELETE',
+                            }),
+                          )
+                        }
+                      >
+                        Remove
+                      </button>
+                    </>
+                  ),
+                },
+              ]
+            : []),
+        ]}
+      />
       <FormStatus error={remove.error} />
       {canManage && (
         <section className="card">
@@ -555,49 +560,46 @@ function BillingPartyForm({ clientId, party }: { clientId: string; party?: Billi
 export function BillingParties({ client, canManage }: { client: ClientDto; canManage: boolean }) {
   return (
     <div className="stack">
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Billing name</th>
-              <th>Invoice email</th>
-              <th>Tax / VAT</th>
-              <th>Location</th>
-              <th>Status</th>
-              {canManage && <th aria-label="Actions" />}
-            </tr>
-          </thead>
-          <tbody>
-            {client.billingParties.length === 0 && (
-              <tr>
-                <td colSpan={6} className="muted">
-                  No billing parties yet.
-                </td>
-              </tr>
-            )}
-            {client.billingParties.map((party) => (
-              <tr key={party.id}>
-                <td>
-                  {party.name} {party.isDefault && <Badge tone="brand">Default</Badge>}
-                </td>
-                <td>{party.email ?? '—'}</td>
-                <td>{party.taxNumber ?? '—'}</td>
-                <td>{[party.city, party.country].filter(Boolean).join(', ') || '—'}</td>
-                <td>
-                  <StatusBadge status={party.isActive ? 'ACTIVE' : 'INACTIVE'} />
-                </td>
-                {canManage && (
-                  <td className={styles.actions}>
-                    <Editor label="Edit">
-                      <BillingPartyForm clientId={client.id} party={party} />
+      <DataTable
+        label="Billing parties"
+        rows={client.billingParties}
+        rowKey={(b) => b.id}
+        empty="No billing parties yet."
+        columns={[
+          {
+            header: 'Billing name',
+            primary: true,
+            cell: (b) => (
+              <>
+                {b.name} {b.isDefault && <Badge tone="brand">Default</Badge>}
+              </>
+            ),
+          },
+          { header: 'Invoice email', cell: (b) => b.email ?? '—' },
+          { header: 'Tax / VAT', cell: (b) => b.taxNumber ?? '—' },
+          {
+            header: 'Location',
+            cell: (b) => [b.city, b.country].filter(Boolean).join(', ') || '—',
+          },
+          {
+            header: 'Status',
+            cell: (b) => <StatusBadge status={b.isActive ? 'ACTIVE' : 'INACTIVE'} />,
+          },
+          ...(canManage
+            ? [
+                {
+                  header: 'Actions',
+                  actions: true,
+                  cell: (b: BillingPartyDto) => (
+                    <Editor label="Edit" title={`Edit ${b.name}`}>
+                      <BillingPartyForm clientId={client.id} party={b} />
                     </Editor>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                  ),
+                },
+              ]
+            : []),
+        ]}
+      />
       {canManage && (
         <section className="card">
           <h2 className="card-title">Add billing party</h2>

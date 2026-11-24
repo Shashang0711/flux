@@ -1,119 +1,324 @@
+/* ─── Frame ──────────────────────────────────────────────────────────────── */
+
 .shell {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   min-height: 100vh;
-  /* Paint the sidebar column full height, even when the content is taller than the screen. */
-  background: linear-gradient(
-    to right,
-    var(--surface) 239px,
-    var(--border) 239px 240px,
-    transparent 240px
-  );
+  min-height: 100dvh;
+}
+
+.skip {
+  position: absolute;
+  left: 12px;
+  top: -48px;
+  z-index: 100;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--brand);
+  color: var(--on-brand);
+}
+
+.skip:focus {
+  top: 12px;
+}
+
+.content {
+  padding: 32px 40px 48px;
+  min-width: 0;
+  width: 100%;
+  /* max-width: 1200px; */
+}
+
+.content:focus {
+  outline: none;
+}
+
+/* Desktop: no top bar, backdrop or close button; the sidebar is a sticky column.
+   (.sidebar .closeButton outranks .iconButton's display.) */
+.topbar,
+.backdrop,
+.sidebar .closeButton {
+  display: none;
 }
 
 .sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 20px 16px;
   position: sticky;
   top: 0;
   height: 100vh;
+  height: 100dvh;
   overflow-y: auto;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+/* ─── Sidebar content ────────────────────────────────────────────────────── */
+
+.sidebarInner {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: 18px 14px 14px;
+}
+
+.sidebarHead {
+  padding: 0 8px 16px;
 }
 
 .brand {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--brand);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.2rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  color: var(--text);
   text-decoration: none;
 }
 
+.brand:hover {
+  color: var(--text);
+}
+
+.brandMark {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--brand), var(--accent));
+  color: var(--on-brand);
+  font-size: 0.95rem;
+  letter-spacing: 0;
+}
+
 .org {
-  margin: 0 0 16px;
+  margin: 8px 0 0;
   font-size: 0.85rem;
   color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.nav {
+  flex: 1;
 }
 
 .navGroup {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .navGroupLabel {
-  margin: 0 0 4px;
+  margin: 0 0 6px;
   padding: 0 10px;
   font-size: 0.7rem;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: var(--muted);
 }
 
 .navLink {
-  display: block;
-  padding: 7px 10px;
-  border-radius: var(--radius);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
   color: var(--text);
   text-decoration: none;
   font-size: 0.92rem;
 }
 
+.navLink svg {
+  color: var(--muted);
+  flex: none;
+}
+
 .navLink:hover {
   background: var(--surface-2);
+  color: var(--text);
 }
 
 .navLinkActive {
-  background: var(--surface-2);
+  background: var(--brand-soft);
+  color: var(--brand);
   font-weight: 600;
+}
+
+.navLinkActive svg {
   color: var(--brand);
 }
 
+.navLinkActive::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--brand);
+}
+
 .user {
-  margin-top: auto;
-  padding-top: 16px;
+  padding-top: 14px;
   border-top: 1px solid var(--border);
 }
 
+.userIdentity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 4px 12px;
+  min-width: 0;
+}
+
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.userText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .userName {
-  margin: 0;
   font-weight: 600;
   font-size: 0.9rem;
 }
 
 .userEmail {
-  margin: 0 0 10px;
   color: var(--muted);
   font-size: 0.8rem;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .userActions {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
-.content {
-  padding: 32px 40px;
-  min-width: 0;
-  max-width: 1100px;
+.iconButton {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  cursor: pointer;
 }
 
-@media (max-width: 800px) {
+.iconButton:hover {
+  background: var(--surface-2);
+}
+
+/* ─── Tablet & phone: top bar + drawer ───────────────────────────────────── */
+
+@media (max-width: 1023px) {
   .shell {
-    grid-template-columns: 1fr;
-    background: none;
+    display: block;
   }
 
-  .sidebar {
-    background: var(--surface);
-    position: static;
-    height: auto;
-    border-right: 0;
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: var(--topbar-height);
+    padding: 0 8px;
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    backdrop-filter: saturate(1.4) blur(8px);
     border-bottom: 1px solid var(--border);
   }
 
+  .topbarBrand {
+    flex: none;
+  }
+
+  .topbarOrg {
+    min-width: 0;
+    margin-left: auto;
+    padding-right: 8px;
+    color: var(--muted);
+    font-size: 0.85rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 50;
+    width: min(86vw, 320px);
+    height: 100%;
+    border-right: 0;
+    box-shadow: var(--shadow-lg);
+    transform: translateX(-105%);
+    transition: transform 0.22s ease;
+    visibility: hidden;
+  }
+
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: block;
+    background: rgb(10 15 25 / 45%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+  }
+
+  .shell[data-drawer-open] .sidebar {
+    transform: none;
+    visibility: visible;
+  }
+
+  .shell[data-drawer-open] .backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .sidebar .closeButton {
+    display: inline-grid;
+    position: absolute;
+    top: 10px;
+    right: 8px;
+  }
+
   .content {
-    padding: 24px 16px;
+    padding: 24px var(--gutter) 40px;
+    max-width: none;
+  }
+}
+
+@media (max-width: 639px) {
+  .content {
+    padding-top: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .backdrop {
+    transition: none;
   }
 }

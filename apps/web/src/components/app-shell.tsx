@@ -2,42 +2,77 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import type { SessionInfo } from '@flux/shared';
 import { visibleNavigation } from '@/lib/navigation';
+import { Icon } from './icons';
 import { LogoutButton } from './logout-button';
 import { NavLink } from './nav-link';
+import { ShellFrame } from './shell-frame';
 import styles from './app-shell.module.css';
 
-/** Signed-in layout: permission-aware sidebar, organisation and user menu. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return (
+    (parts[0]?.[0] ?? '') + (parts.length > 1 ? (parts.at(-1)?.[0] ?? '') : '')
+  ).toUpperCase();
+}
+
+/** The FLUX wordmark with its mark. */
+export function Brand() {
+  return (
+    <Link href="/" className={styles.brand} aria-label="FLUX home">
+      <span className={styles.brandMark} aria-hidden="true">
+        F
+      </span>
+      <span>FLUX</span>
+    </Link>
+  );
+}
+
+/** Signed-in layout: permission-aware navigation, organisation and user menu. */
 export function AppShell({ session, children }: { session: SessionInfo; children: ReactNode }) {
   const groups = visibleNavigation(session);
+  const orgName = session.tenant?.name ?? 'Platform administration';
   return (
-    <div className={styles.shell}>
-      <aside className={styles.sidebar}>
-        <Link href="/" className={styles.brand}>
-          FLUX
-        </Link>
-        <p className={styles.org}>{session.tenant?.name ?? 'Platform administration'}</p>
-        <nav aria-label="Main">
-          {groups.map((group) => (
-            <div key={group.label} className={styles.navGroup}>
-              <p className={styles.navGroupLabel}>{group.label}</p>
-              {group.items.map((item) => (
-                <NavLink key={item.href} href={item.href} label={item.label} />
-              ))}
+    <ShellFrame
+      brand={<Brand />}
+      orgName={orgName}
+      sidebar={
+        <div className={styles.sidebarInner}>
+          <div className={styles.sidebarHead}>
+            <Brand />
+            <p className={styles.org}>{orgName}</p>
+          </div>
+          <nav aria-label="Main" className={styles.nav}>
+            {groups.map((group) => (
+              <div key={group.label} className={styles.navGroup}>
+                <p className={styles.navGroupLabel}>{group.label}</p>
+                {group.items.map((item) => (
+                  <NavLink key={item.href} href={item.href} label={item.label} icon={item.icon} />
+                ))}
+              </div>
+            ))}
+          </nav>
+          <div className={styles.user}>
+            <div className={styles.userIdentity}>
+              <span className={styles.avatar} aria-hidden="true">
+                {initials(session.user.name)}
+              </span>
+              <span className={styles.userText}>
+                <span className={styles.userName}>{session.user.name}</span>
+                <span className={styles.userEmail}>{session.user.email}</span>
+              </span>
             </div>
-          ))}
-        </nav>
-        <div className={styles.user}>
-          <p className={styles.userName}>{session.user.name}</p>
-          <p className={styles.userEmail}>{session.user.email}</p>
-          <div className={styles.userActions}>
-            <Link className="btn" href="/account">
-              Account
-            </Link>
-            <LogoutButton className="btn" />
+            <div className={styles.userActions}>
+              <Link className="btn" href="/account">
+                <Icon name="account" size={16} />
+                Account
+              </Link>
+              <LogoutButton className="btn" />
+            </div>
           </div>
         </div>
-      </aside>
-      <main className={styles.content}>{children}</main>
-    </div>
+      }
+    >
+      {children}
+    </ShellFrame>
   );
 }

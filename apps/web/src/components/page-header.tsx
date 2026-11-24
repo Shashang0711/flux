@@ -15,7 +15,7 @@ export function PageHeader({
 }) {
   return (
     <header className={styles.header}>
-      <div>
+      <div className={styles.heading}>
         {back && (
           <Link className={styles.back} href={back.href}>
             ← {back.label}

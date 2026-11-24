@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import type { VesselDto, VesselRelationshipDto } from '@flux/shared';
 import { Badge, StatusBadge } from '@/components/badges';
+import { DataTable } from '@/components/data-table';
 import {
   ClientLinkFields,
   clientLinkPayload,
@@ -13,6 +14,13 @@ import {
 import { FormStatus } from '@/components/field';
 import { useMutation } from '@/hooks/use-mutation';
 import { apiFetch } from '@/lib/api';
+
+/** "2020-01-01 – now", "until 2024-12-31", or "Current" when no dates were recorded. */
+function periodLabel(r: VesselRelationshipDto): string {
+  if (r.startDate) return `${r.startDate} – ${r.endDate ?? 'now'}`;
+  if (r.endDate) return `until ${r.endDate}`;
+  return r.status === 'ACTIVE' ? 'Current' : 'Ended';
+}
 
 function FleetPicker({ rel }: { rel: VesselRelationshipDto }) {
   const fleets = useClientFleets(rel.client.id);
@@ -60,7 +68,7 @@ function RelationshipActions({
   const [ending, setEnding] = useState(false);
   if (!canManage || rel.status !== 'ACTIVE') return null;
   return (
-    <div className="stack" style={{ gap: 6, alignItems: 'flex-end' }}>
+    <div className="stack" style={{ gap: 6 }}>
       <div className="row" style={{ justifyContent: 'flex-end' }}>
         {!rel.isPrimary && (
           <button
@@ -151,59 +159,53 @@ export function VesselClients({
   }
   return (
     <div className="stack">
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Client</th>
-              <th>Relationship</th>
-              <th>Fleet</th>
-              <th>Period</th>
-              <th>Status</th>
-              {canManage && <th aria-label="Actions" />}
-            </tr>
-          </thead>
-          <tbody>
-            {relationships.length === 0 && (
-              <tr>
-                <td colSpan={6} className="muted">
-                  {showEnded ? 'No relationships.' : 'Not linked to any client yet.'}
-                </td>
-              </tr>
-            )}
-            {relationships.map((rel) => (
-              <tr key={rel.id}>
-                <td>
-                  <Link href={`/admin/clients/${rel.client.id}`}>{rel.client.name}</Link>{' '}
-                  {rel.isPrimary && <Badge tone="brand">Primary</Badge>}
-                  <span className="muted" style={{ display: 'block', fontSize: '0.8rem' }}>
-                    {rel.client.code}
-                  </span>
-                </td>
-                <td>{rel.relationshipType.name}</td>
-                <td style={{ minWidth: 180 }}>
-                  {canManageFleets && rel.status === 'ACTIVE' ? (
-                    <FleetPicker rel={rel} />
-                  ) : (
-                    (rel.fleet?.name ?? '—')
-                  )}
-                </td>
-                <td className="muted">
-                  {rel.startDate ?? '…'} – {rel.endDate ?? 'now'}
-                </td>
-                <td>
-                  <StatusBadge status={rel.status} />
-                </td>
-                {canManage && (
-                  <td style={{ textAlign: 'right' }}>
-                    <RelationshipActions rel={rel} canManage={canManage} />
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        label="Client relationships"
+        rows={relationships}
+        rowKey={(r) => r.id}
+        empty={showEnded ? 'No relationships.' : 'Not linked to any client yet.'}
+        columns={[
+          {
+            header: 'Client',
+            primary: true,
+            cell: (r) => (
+              <>
+                <Link href={`/admin/clients/${r.client.id}`}>{r.client.name}</Link>{' '}
+                {r.isPrimary && <Badge tone="brand">Primary</Badge>}
+                <span className="cell-sub">
+                  <code>{r.client.code}</code>
+                </span>
+              </>
+            ),
+          },
+          { header: 'Relationship', cell: (r) => r.relationshipType.name },
+          {
+            header: 'Fleet',
+            cell: (r) =>
+              canManageFleets && r.status === 'ACTIVE' ? (
+                <FleetPicker rel={r} />
+              ) : (
+                (r.fleet?.name ?? '—')
+              ),
+          },
+          {
+            header: 'Period',
+            cell: (r) => <span className="muted">{periodLabel(r)}</span>,
+          },
+          { header: 'Status', cell: (r) => <StatusBadge status={r.status} /> },
+          ...(canManage
+            ? [
+                {
+                  header: 'Actions',
+                  actions: true,
+                  cell: (r: VesselRelationshipDto) => (
+                    <RelationshipActions rel={r} canManage={canManage} />
+                  ),
+                },
+              ]
+            : []),
+        ]}
+      />
       <Link href={`/admin/vessels/${vessel.id}?tab=clients${showEnded ? '' : '&ended=1'}`}>
         {showEnded ? 'Hide ended relationships' : 'Show ended relationships'}
       </Link>

@@ -1,16 +1,28 @@
+/* Tabs scroll sideways on narrow screens instead of wrapping into several rows. */
 .tabs {
   display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
+  gap: 2px;
+  margin-bottom: 18px;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .tab {
-  padding: 8px 12px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 14px;
   font-size: 0.9rem;
   color: var(--muted);
   text-decoration: none;
+  white-space: nowrap;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
 }

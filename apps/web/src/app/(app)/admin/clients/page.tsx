@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import type { ClientSummaryDto, PageMeta } from '@flux/shared';
 import { StatusBadge } from '@/components/badges';
+import { DataTable } from '@/components/data-table';
 import { Forbidden } from '@/components/forbidden';
 import { PageHeader } from '@/components/page-header';
 import { Pagination, readParams } from '@/components/pagination';
@@ -37,10 +38,9 @@ export default async function ClientsPage({
         }
       />
       <div className="stack">
-        <form className="row" role="search">
+        <form className="toolbar" role="search">
           <input
             className="input"
-            style={{ maxWidth: 320 }}
             name="q"
             placeholder="Search name, client ID or email"
             defaultValue={params.q}
@@ -48,7 +48,6 @@ export default async function ClientsPage({
           />
           <select
             className="select"
-            style={{ maxWidth: 180 }}
             name="status"
             defaultValue={params.status ?? ''}
             aria-label="Status"
@@ -61,46 +60,34 @@ export default async function ClientsPage({
             Filter
           </button>
         </form>
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Client ID</th>
-                <th>Name</th>
-                <th>Primary contact</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {clients.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="muted">
-                    No clients found.
-                  </td>
-                </tr>
-              )}
-              {clients.map((client) => (
-                <tr key={client.id}>
-                  <td>
-                    <code>{client.code}</code>
-                  </td>
-                  <td>
-                    <Link href={`/admin/clients/${client.id}`}>{client.name}</Link>
-                    {client.tradingName && <span className="muted"> · {client.tradingName}</span>}
-                  </td>
-                  <td>{client.primaryContact?.name ?? <span className="muted">—</span>}</td>
-                  <td>{client.email ?? <span className="muted">—</span>}</td>
-                  <td>{client.phone ?? <span className="muted">—</span>}</td>
-                  <td>
-                    <StatusBadge status={client.status} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          label="Clients"
+          rows={clients}
+          rowKey={(c) => c.id}
+          empty="No clients found."
+          columns={[
+            {
+              header: 'Client',
+              primary: true,
+              cell: (c) => (
+                <>
+                  <Link href={`/admin/clients/${c.id}`}>{c.name}</Link>
+                  <span className="cell-sub">
+                    <code>{c.code}</code>
+                    {c.tradingName && <> · {c.tradingName}</>}
+                  </span>
+                </>
+              ),
+            },
+            {
+              header: 'Primary contact',
+              cell: (c) => c.primaryContact?.name ?? <span className="muted">—</span>,
+            },
+            { header: 'Email', cell: (c) => c.email ?? <span className="muted">—</span> },
+            { header: 'Phone', cell: (c) => c.phone ?? <span className="muted">—</span> },
+            { header: 'Status', cell: (c) => <StatusBadge status={c.status} /> },
+          ]}
+        />
         <Pagination meta={meta as PageMeta} basePath="/admin/clients" params={params} />
       </div>
     </>

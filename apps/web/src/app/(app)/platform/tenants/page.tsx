@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { MODULES, type PageMeta, type TenantDto } from '@flux/shared';
 import { StatusBadge } from '@/components/badges';
+import { DataTable } from '@/components/data-table';
 import { Forbidden } from '@/components/forbidden';
 import { PageHeader } from '@/components/page-header';
 import { Pagination, readParams } from '@/components/pagination';
@@ -36,10 +37,9 @@ export default async function TenantsPage({
         }
       />
       <div className="stack">
-        <form className="row" role="search">
+        <form className="toolbar" role="search">
           <input
             className="input"
-            style={{ maxWidth: 320 }}
             name="q"
             placeholder="Search name or slug"
             defaultValue={params.q}
@@ -47,7 +47,6 @@ export default async function TenantsPage({
           />
           <select
             className="select"
-            style={{ maxWidth: 180 }}
             name="status"
             defaultValue={params.status ?? ''}
             aria-label="Status"
@@ -60,45 +59,30 @@ export default async function TenantsPage({
             Filter
           </button>
         </form>
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Slug</th>
-                <th>Modules</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tenants.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="muted">
-                    No tenants found.
-                  </td>
-                </tr>
-              )}
-              {tenants.map((tenant) => (
-                <tr key={tenant.id}>
-                  <td>
-                    <Link href={`/platform/tenants/${tenant.id}`}>{tenant.name}</Link>
-                  </td>
-                  <td className="muted">{tenant.slug}</td>
-                  <td>
-                    {tenant.modules.length === 0
-                      ? '—'
-                      : tenant.modules
-                          .map((key) => MODULES.find((m) => m.key === key)?.name ?? key)
-                          .join(', ')}
-                  </td>
-                  <td>
-                    <StatusBadge status={tenant.status} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          label="Tenants"
+          rows={tenants}
+          rowKey={(t) => t.id}
+          empty="No tenants found."
+          columns={[
+            {
+              header: 'Name',
+              primary: true,
+              cell: (t) => <Link href={`/platform/tenants/${t.id}`}>{t.name}</Link>,
+            },
+            { header: 'Slug', cell: (t) => <code>{t.slug}</code> },
+            {
+              header: 'Modules',
+              cell: (t) =>
+                t.modules.length === 0
+                  ? '—'
+                  : t.modules
+                      .map((key) => MODULES.find((m) => m.key === key)?.name ?? key)
+                      .join(', '),
+            },
+            { header: 'Status', cell: (t) => <StatusBadge status={t.status} /> },
+          ]}
+        />
         <Pagination meta={meta as PageMeta} basePath="/platform/tenants" params={params} />
       </div>
     </>

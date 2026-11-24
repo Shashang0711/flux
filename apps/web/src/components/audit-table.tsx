@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { DataTable } from './data-table';
 import { auditActionLabel, isListChange, type AuditLogDto } from '@flux/shared';
 import styles from './audit-table.module.css';
 
@@ -105,55 +106,61 @@ export function AuditTable({
   showEntity?: boolean;
   linkEntities?: boolean;
 }) {
-  if (entries.length === 0) return <p className="muted">No activity recorded yet.</p>;
   return (
-    <div className="table-wrap">
-      <table className="table">
-        <thead>
-          <tr>
-            <th>When</th>
-            <th>Who</th>
-            <th>What</th>
-            {showEntity && <th>Record</th>}
-            <th>Changes</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((entry) => {
-            const href = linkEntities ? entityHref(entry) : null;
-            return (
-              <tr key={entry.id}>
-                <td className={styles.when}>
-                  <time dateTime={entry.occurredAt}>
-                    {new Date(entry.occurredAt).toLocaleString('en-GB', {
-                      dateStyle: 'medium',
-                      timeStyle: 'short',
-                    })}
-                  </time>
-                </td>
-                <td>
-                  {entry.actor.name ?? 'System'}
-                  {entry.actor.email && <span className={styles.sub}>{entry.actor.email}</span>}
-                </td>
-                <td>{auditActionLabel(entry.action)}</td>
-                {showEntity && (
-                  <td>
-                    {href ? (
-                      <Link href={href}>{entry.entity.label ?? 'Open'}</Link>
-                    ) : (
-                      (entry.entity.label ?? '—')
-                    )}
-                    <span className={styles.sub}>{entry.entity.type}</span>
-                  </td>
-                )}
-                <td>
-                  <Changes entry={entry} />
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      label="Audit log"
+      rows={entries}
+      rowKey={(e) => e.id}
+      empty="No activity recorded yet."
+      columns={[
+        {
+          header: 'What',
+          primary: true,
+          cell: (e) => (
+            <>
+              {auditActionLabel(e.action)}
+              <span className={styles.sub}>
+                <time dateTime={e.occurredAt}>
+                  {new Date(e.occurredAt).toLocaleString('en-GB', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })}
+                </time>
+              </span>
+            </>
+          ),
+        },
+        {
+          header: 'Who',
+          cell: (e) => (
+            <>
+              {e.actor.name ?? 'System'}
+              {e.actor.email && <span className={styles.sub}>{e.actor.email}</span>}
+            </>
+          ),
+        },
+        ...(showEntity
+          ? [
+              {
+                header: 'Record',
+                cell: (e: AuditLogDto) => {
+                  const href = linkEntities ? entityHref(e) : null;
+                  return (
+                    <>
+                      {href ? (
+                        <Link href={href}>{e.entity.label ?? 'Open'}</Link>
+                      ) : (
+                        (e.entity.label ?? '—')
+                      )}
+                      <span className={styles.sub}>{e.entity.type}</span>
+                    </>
+                  );
+                },
+              },
+            ]
+          : []),
+        { header: 'Changes', cell: (e) => <Changes entry={e} /> },
+      ]}
+    />
   );
 }

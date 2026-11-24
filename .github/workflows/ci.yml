@@ -39,3 +39,62 @@ jobs:
       - name: End-to-end tests (real database)
         run: npm run test:e2e
       - run: npm run build
+
+  browser:
+    # Real browser checks: every page at phone/tablet/desktop widths (no sideways scrolling,
+    # content above the fold), the menu drawer, and core flows. See apps/web/e2e.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: flux
+          POSTGRES_PASSWORD: flux
+          POSTGRES_DB: flux
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U flux"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://flux:flux@localhost:5432/flux?schema=public
+      PORT: 4000
+      CORS_ORIGINS: http://localhost:3000
+      LOGIN_RATE_LIMIT: 100
+      FLUX_ADMIN_EMAIL: operator@flux.test
+      FLUX_ADMIN_PASSWORD: operator-pass-1
+      API_BASE_URL: http://localhost:4000/api/v1
+      E2E_BASE_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Prepare database
+        run: |
+          npm run prisma:deploy -w @flux/api
+          npm run db:seed
+      - name: Start API and web
+        run: |
+          npm run start -w @flux/api > api.log 2>&1 &
+          npm run start -w @flux/web > web.log 2>&1 &
+          for url in http://localhost:4000/api/v1/health http://localhost:3000/login; do
+            timeout 60 bash -c "until curl -sf -o /dev/null $url; do sleep 1; done"
+          done
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - run: npm run test:browser -w @flux/web
+      - name: Upload report and server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-report
+          path: |
+            apps/web/e2e/.report
+            apps/web/e2e/.results
+            api.log
+            web.log

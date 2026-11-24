@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { PORTALS, type PageMeta, type RoleSummaryDto } from '@flux/shared';
 import { ActiveBadge, Badge } from '@/components/badges';
+import { DataTable } from '@/components/data-table';
 import { Forbidden } from '@/components/forbidden';
 import { PageHeader } from '@/components/page-header';
 import { Pagination, readParams } from '@/components/pagination';
@@ -38,10 +39,9 @@ export default async function RolesPage({
         }
       />
       <div className="stack">
-        <form className="row" role="search">
+        <form className="toolbar" role="search">
           <input
             className="input"
-            style={{ maxWidth: 320 }}
             name="q"
             placeholder="Search roles"
             defaultValue={params.q}
@@ -51,43 +51,33 @@ export default async function RolesPage({
             Search
           </button>
         </form>
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Role</th>
-                <th>Default portal</th>
-                <th>Users</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {roles.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="muted">
-                    No roles found.
-                  </td>
-                </tr>
-              )}
-              {roles.map((role) => (
-                <tr key={role.id}>
-                  <td>
-                    <span className="row">
-                      <Link href={`/admin/roles/${role.id}`}>{role.name}</Link>
-                      {role.isSystem && <Badge tone="brand">Built-in</Badge>}
-                    </span>
-                    {role.description && <span className="muted">{role.description}</span>}
-                  </td>
-                  <td>{PORTALS.find((p) => p.key === role.defaultPortal)?.name}</td>
-                  <td>{role.userCount}</td>
-                  <td>
-                    <ActiveBadge active={role.isActive} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          label="Roles"
+          rows={roles}
+          rowKey={(r) => r.id}
+          empty="No roles found."
+          columns={[
+            {
+              header: 'Role',
+              primary: true,
+              cell: (r) => (
+                <>
+                  <span className="row">
+                    <Link href={`/admin/roles/${r.id}`}>{r.name}</Link>
+                    {r.isSystem && <Badge tone="brand">Built-in</Badge>}
+                  </span>
+                  {r.description && <span className="cell-sub">{r.description}</span>}
+                </>
+              ),
+            },
+            {
+              header: 'Default portal',
+              cell: (r) => PORTALS.find((p) => p.key === r.defaultPortal)?.name,
+            },
+            { header: 'Users', cell: (r) => r.userCount },
+            { header: 'Status', cell: (r) => <ActiveBadge active={r.isActive} /> },
+          ]}
+        />
         <Pagination meta={meta as PageMeta} basePath="/admin/roles" params={params} />
       </div>
     </>

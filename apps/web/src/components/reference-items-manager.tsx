@@ -1,8 +1,10 @@
 'use client';
 
+import { EditDialog } from '@/components/edit-dialog';
 import type { FormEvent } from 'react';
 import type { ReferenceItemDto } from '@flux/shared';
 import { Badge } from '@/components/badges';
+import { DataTable } from '@/components/data-table';
 import { Field, FormStatus } from '@/components/field';
 import { useMutation } from '@/hooks/use-mutation';
 import { apiFetch } from '@/lib/api';
@@ -30,37 +32,51 @@ export function ReferenceItemsManager({
   return (
     <div className="stack">
       {canManage && <AddItemForm apiPath={apiPath} itemName={itemName} mode={mode} />}
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Code</th>
-              {mode === 'tenant' && <th>Source</th>}
-              <th>Status</th>
-              {canManage && <th aria-label="Actions" />}
-            </tr>
-          </thead>
-          <tbody>
-            {items.length === 0 && (
-              <tr>
-                <td colSpan={5} className="muted">
-                  No items yet.
-                </td>
-              </tr>
-            )}
-            {items.map((item) => (
-              <ItemRow
-                key={item.id}
-                item={item}
-                mode={mode}
-                apiPath={apiPath}
-                canManage={canManage}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        label={`${itemName} list`}
+        rows={items}
+        rowKey={(i) => i.id}
+        empty="No items yet."
+        rowClassName={(i) => (i.hidden || !i.isActive ? styles.dimmed : undefined)}
+        columns={[
+          {
+            header: 'Name',
+            primary: true,
+            cell: (i) => (
+              <>
+                {i.name}
+                {i.description && <span className="cell-sub">{i.description}</span>}
+              </>
+            ),
+          },
+          { header: 'Code', cell: (i) => <code>{i.code}</code> },
+          ...(mode === 'tenant'
+            ? [
+                {
+                  header: 'Source',
+                  cell: (i: ReferenceItemDto) =>
+                    i.source === 'PLATFORM' ? (
+                      <Badge tone="brand">FLUX default</Badge>
+                    ) : (
+                      <Badge>Your item</Badge>
+                    ),
+                },
+              ]
+            : []),
+          { header: 'Status', cell: (i) => <StatusBadges item={i} /> },
+          ...(canManage
+            ? [
+                {
+                  header: 'Actions',
+                  actions: true,
+                  cell: (i: ReferenceItemDto) => (
+                    <ItemActions item={i} mode={mode} apiPath={apiPath} />
+                  ),
+                },
+              ]
+            : []),
+        ]}
+      />
     </div>
   );
 }
@@ -70,68 +86,38 @@ function StatusBadges({ item }: { item: ReferenceItemDto }) {
   return item.isActive ? <span className="badge badge-ok">Active</span> : <Badge>Inactive</Badge>;
 }
 
-function ItemRow({
+/** Edit for own items (or any item on the platform); Hide/Show for FLUX defaults. */
+function ItemActions({
   item,
   mode,
   apiPath,
-  canManage,
 }: {
   item: ReferenceItemDto;
   mode: 'tenant' | 'platform';
   apiPath: string;
-  canManage: boolean;
 }) {
-  const editable = mode === 'platform' || item.source === 'TENANT';
   const toggleVisibility = useMutation();
-
+  if (mode === 'platform' || item.source === 'TENANT')
+    return <EditItem item={item} apiPath={apiPath} />;
   return (
-    <tr className={item.hidden || !item.isActive ? styles.dimmed : undefined}>
-      <td>
-        {item.name}
-        {item.description && <span className={styles.sub}>{item.description}</span>}
-      </td>
-      <td>
-        <code>{item.code}</code>
-      </td>
-      {mode === 'tenant' && (
-        <td>
-          {item.source === 'PLATFORM' ? (
-            <Badge tone="brand">FLUX default</Badge>
-          ) : (
-            <Badge>Your item</Badge>
-          )}
-        </td>
-      )}
-      <td>
-        <StatusBadges item={item} />
-      </td>
-      {canManage && (
-        <td className={styles.actions}>
-          {editable ? (
-            <EditItem item={item} apiPath={apiPath} />
-          ) : (
-            <>
-              <button
-                type="button"
-                className="btn"
-                disabled={toggleVisibility.pending}
-                onClick={() =>
-                  toggleVisibility.run(() =>
-                    apiFetch(`${apiPath}/${item.id}/visibility`, {
-                      method: 'PUT',
-                      body: JSON.stringify({ hidden: !item.hidden }),
-                    }),
-                  )
-                }
-              >
-                {item.hidden ? 'Show' : 'Hide'}
-              </button>
-              <FormStatus error={toggleVisibility.error} />
-            </>
-          )}
-        </td>
-      )}
-    </tr>
+    <>
+      <button
+        type="button"
+        className="btn"
+        disabled={toggleVisibility.pending}
+        onClick={() =>
+          toggleVisibility.run(() =>
+            apiFetch(`${apiPath}/${item.id}/visibility`, {
+              method: 'PUT',
+              body: JSON.stringify({ hidden: !item.hidden }),
+            }),
+          )
+        }
+      >
+        {item.hidden ? 'Show' : 'Hide'}
+      </button>
+      <FormStatus error={toggleVisibility.error} />
+    </>
   );
 }
 
@@ -158,9 +144,8 @@ function EditItem({ item, apiPath }: { item: ReferenceItemDto; apiPath: string }
   }
   const id = (field: string) => `${field}-${item.id}`;
   return (
-    <details className={styles.edit}>
-      <summary className="btn">Edit</summary>
-      <form className={`form ${styles.editForm}`} onSubmit={onSubmit} noValidate>
+    <EditDialog title={`Edit ${item.name}`}>
+      <form className="form" onSubmit={onSubmit} noValidate>
         <Field label="Name" htmlFor={id('name')} error={fields.name}>
           <input className="input" id={id('name')} name="name" defaultValue={item.name} required />
         </Field>
@@ -195,7 +180,7 @@ function EditItem({ item, apiPath }: { item: ReferenceItemDto; apiPath: string }
           </button>
         </div>
       </form>
-    </details>
+    </EditDialog>
   );
 }
 

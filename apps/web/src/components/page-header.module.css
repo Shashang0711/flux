@@ -7,9 +7,16 @@
   margin-bottom: 24px;
 }
 
+.heading {
+  min-width: 0;
+}
+
 .back {
-  display: inline-block;
-  margin-bottom: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  margin-bottom: 2px;
   font-size: 0.85rem;
   color: var(--muted);
   text-decoration: none;
@@ -21,16 +28,37 @@
 
 .title {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.6rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .description {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   color: var(--muted);
+  max-width: 70ch;
 }
 
 .actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+@media (max-width: 639px) {
+  .header {
+    margin-bottom: 18px;
+  }
+
+  .title {
+    font-size: 1.35rem;
+  }
+
+  .actions {
+    width: 100%;
+  }
+
+  .actions > :global(.btn) {
+    flex: 1 1 auto;
+  }
 }
