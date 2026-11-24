@@ -4,6 +4,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { FormEvent } from 'react';
 import type { CustomFieldDefinitionDto, ReferenceItemDto, VesselDto } from '@flux/shared';
+import {
+  ClientLinkFields,
+  clientLinkPayload,
+  type ClientLinkOptions,
+} from '@/components/client-link-fields';
 import { CustomFieldInputs, customFieldPayload } from '@/components/custom-field-inputs';
 import { Field, FormStatus } from '@/components/field';
 import { useMutation } from '@/hooks/use-mutation';
@@ -30,10 +35,13 @@ export function VesselForm({
   vessel,
   options,
   disabled,
+  linkOptions,
 }: {
   vessel?: VesselDto;
   options: VesselFormOptions;
   disabled?: boolean;
+  /** Create mode only: optionally link the new vessel to a client and fleet. */
+  linkOptions?: ClientLinkOptions | null;
 }) {
   const router = useRouter();
   const { pending, error, fields, errorBody, success, run } = useMutation();
@@ -58,6 +66,9 @@ export function VesselForm({
       deadweight: v('deadweight'),
       ...(options.customFields.length > 0
         ? { customFields: customFieldPayload(data, options.customFields) }
+        : {}),
+      ...(!vessel && linkOptions && clientLinkPayload(data, 'relationship.')
+        ? { relationship: clientLinkPayload(data, 'relationship.') }
         : {}),
     };
     await run(
@@ -160,6 +171,19 @@ export function VesselForm({
         fields={fields}
         disabled={disabled}
       />
+      {!vessel && linkOptions && (
+        <fieldset className="stack" style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend className="card-title" style={{ marginBottom: 12 }}>
+            Link to a client (optional)
+          </legend>
+          <ClientLinkFields
+            options={linkOptions}
+            fields={fields}
+            prefix="relationship."
+            required={false}
+          />
+        </fieldset>
+      )}
       <FormStatus error={error} fields={fields} success={success} />
       {!disabled && (
         <div className="form-actions">

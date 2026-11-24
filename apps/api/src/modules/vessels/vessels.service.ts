@@ -22,6 +22,7 @@ import { TenantDb, type TenantTx } from '../../database/tenant-db.service';
 import { compactChanges, fieldChanges, recordAudit } from '../audit/audit';
 import type { AuthUser, TenantContext } from '../auth/auth.types';
 import { CustomFieldsService } from '../custom-fields/custom-fields.service';
+import { RelationshipsService, assertClientsModule } from './relationships.service';
 
 const REF_SELECT = { select: { id: true, code: true, name: true } } as const;
 const VESSEL_INCLUDE = {
@@ -88,6 +89,7 @@ export class VesselsService {
   constructor(
     private readonly db: TenantDb,
     private readonly customFields: CustomFieldsService,
+    private readonly relationships: RelationshipsService,
   ) {}
 
   list(
@@ -134,7 +136,8 @@ export class VesselsService {
     actor: AuthUser,
   ): Promise<VesselDto> {
     return this.db.run(ctx.tenantId, async (tx) => {
-      const { customFields: customInput, ...fields } = input;
+      const { customFields: customInput, relationship, ...fields } = input;
+      if (relationship) assertClientsModule(actor);
       // Validate everything before taking a number, so failed creates never touch the sequence.
       await this.assertReferencesUsable(tx, fields);
       if (fields.imoNumber) await this.assertImoAvailable(tx, fields.imoNumber);
@@ -155,6 +158,17 @@ export class VesselsService {
           ...this.referenceChanges(null, vessel),
           ...custom.changes,
         });
+        if (relationship) {
+          // Same transaction: the vessel and its first client link are created together or not at all.
+          await this.relationships.createInTx(
+            tx,
+            ctx,
+            vessel.id,
+            relationship,
+            actor,
+            'relationship.',
+          );
+        }
         return toVesselDto(vessel);
       } catch (error) {
         throw this.mapUniqueViolation(error);

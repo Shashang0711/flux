@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { customFieldInputSchema, type CustomFieldValues } from '../custom-fields/custom-fields';
+import { createRelationshipSchema } from './relationships';
 
 export const VesselStatus = { ACTIVE: 'ACTIVE', INACTIVE: 'INACTIVE' } as const;
 export type VesselStatus = (typeof VesselStatus)[keyof typeof VesselStatus];
@@ -120,6 +121,8 @@ const vesselFields = {
 export const createVesselSchema = z.object({
   ...vesselFields,
   customFields: customFieldInputSchema,
+  /** Optional: link the new vessel to a client (and fleet) in the same step. */
+  relationship: createRelationshipSchema.nullable().optional(),
 });
 export type CreateVesselRequest = z.input<typeof createVesselSchema>;
 
