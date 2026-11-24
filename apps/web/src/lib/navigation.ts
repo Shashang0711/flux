@@ -30,7 +30,10 @@ export const NAVIGATION: NavGroup[] = [
   },
   {
     label: 'Clients',
-    items: [{ href: '/admin/clients', label: 'Clients', permission: 'client.view' }],
+    items: [
+      { href: '/admin/clients', label: 'Clients', permission: 'client.view' },
+      { href: '/admin/vessels', label: 'Vessels', permission: 'vessel.view' },
+    ],
   },
   {
     label: 'Administration',

@@ -46,6 +46,10 @@ export const AUDIT_ACTIONS = {
   'custom-field.updated': 'Custom field updated',
   'custom-field.activated': 'Custom field activated',
   'custom-field.deactivated': 'Custom field deactivated',
+  'vessel.created': 'Vessel created',
+  'vessel.updated': 'Vessel updated',
+  'vessel.activated': 'Vessel activated',
+  'vessel.deactivated': 'Vessel deactivated',
 } as const;
 
 export type AuditAction = keyof typeof AUDIT_ACTIONS;
@@ -58,6 +62,7 @@ export const AUDIT_ENTITY_TYPES = [
   'reference-item',
   'client',
   'custom-field',
+  'vessel',
 ] as const;
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
 

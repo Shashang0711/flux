@@ -41,6 +41,14 @@ const FIELD_LABELS: Record<string, string> = {
   required: 'Required',
   helpText: 'Help text',
   options: 'Options',
+  imoNumber: 'IMO number',
+  previousName: 'Previous name',
+  callSign: 'Call sign',
+  vesselType: 'Vessel type',
+  classificationSociety: 'Classification society',
+  yearBuilt: 'Year built',
+  grossTonnage: 'Gross tonnage',
+  deadweight: 'Deadweight',
 };
 
 function show(value: unknown): string {
@@ -84,6 +92,7 @@ function entityHref(entry: AuditLogDto): string | null {
   if (entry.entity.type === 'user') return `/admin/users/${entry.entity.id}`;
   if (entry.entity.type === 'role') return `/admin/roles/${entry.entity.id}`;
   if (entry.entity.type === 'client') return `/admin/clients/${entry.entity.id}`;
+  if (entry.entity.type === 'vessel') return `/admin/vessels/${entry.entity.id}`;
   return null;
 }
 

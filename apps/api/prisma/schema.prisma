@@ -49,6 +49,7 @@ model Tenant {
   clientContacts  ClientContact[]
   billingParties  BillingParty[]
   customFields    CustomFieldDefinition[]
+  vessels         Vessel[]
 
   @@map("tenants")
 }
@@ -270,8 +271,10 @@ model ReferenceItem {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  tenant   Tenant?               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  hiddenBy ReferenceItemHidden[]
+  tenant         Tenant?               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  hiddenBy       ReferenceItemHidden[]
+  vesselsByType  Vessel[]              @relation("VesselType")
+  vesselsByClass Vessel[]              @relation("VesselClass")
 
   /// Lets domain tables use a typed composite FK (item id + list key), e.g. vessel → vessel-type.
   @@unique([id, listKey])
@@ -459,4 +462,47 @@ model CustomFieldDefinition {
   @@unique([tenantId, entity, key])
   @@index([tenantId, entity])
   @@map("custom_field_definitions")
+}
+
+// ─── Vessels (M6) ───────────────────────────────────────────────────────────
+
+enum VesselStatus {
+  ACTIVE
+  INACTIVE
+}
+
+/// The vessel master record (design pack §14): independent of clients; client relationships and
+/// fleets attach to it later (M7), so one physical vessel is never duplicated per client.
+model Vessel {
+  id                        String       @id @default(uuid()) @db.Uuid
+  tenantId                  String       @map("tenant_id") @db.Uuid
+  /// Generated per tenant: VS-00001.
+  code                      String
+  name                      String
+  /// 7 digits, check digit validated; unique per tenant when present.
+  imoNumber                 String?      @map("imo_number")
+  previousName              String?      @map("previous_name")
+  callSign                  String?      @map("call_sign")
+  /// Typed reference: (id, list) must exist in reference_items with list_key 'vessel-type'.
+  vesselTypeId              String?      @map("vessel_type_id") @db.Uuid
+  vesselTypeList            String       @default("vessel-type") @map("vessel_type_list")
+  classificationSocietyId   String?      @map("classification_society_id") @db.Uuid
+  classificationSocietyList String       @default("classification-society") @map("classification_society_list")
+  yearBuilt                 Int?         @map("year_built")
+  grossTonnage              Int?         @map("gross_tonnage")
+  deadweight                Int?
+  customFields              Json         @default("{}") @map("custom_fields")
+  status                    VesselStatus @default(ACTIVE)
+  createdAt                 DateTime     @default(now()) @map("created_at")
+  updatedAt                 DateTime     @updatedAt @map("updated_at")
+
+  tenant                Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  vesselType            ReferenceItem? @relation("VesselType", fields: [vesselTypeId, vesselTypeList], references: [id, listKey], onDelete: Restrict)
+  classificationSociety ReferenceItem? @relation("VesselClass", fields: [classificationSocietyId, classificationSocietyList], references: [id, listKey], onDelete: Restrict)
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, imoNumber])
+  @@unique([id, tenantId])
+  @@index([tenantId, name])
+  @@map("vessels")
 }

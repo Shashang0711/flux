@@ -5,6 +5,7 @@ import type { ModuleKey } from '../tenancy/modules';
 /** Record types that can carry custom fields. Add vessels, samples, … here later. */
 export const CUSTOM_FIELD_ENTITIES = [
   { key: 'client', name: 'Clients', module: 'clients' },
+  { key: 'vessel', name: 'Vessels', module: 'vessels' },
 ] as const satisfies readonly {
   key: string;
   name: string;
