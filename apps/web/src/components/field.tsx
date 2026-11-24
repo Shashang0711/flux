@@ -31,8 +31,32 @@ export function Field({
   );
 }
 
-/** Form-level feedback from useMutation. */
-export function FormStatus({ error, success }: { error: string | null; success?: string | null }) {
+/**
+ * Form-level feedback from useMutation. With field errors, it lists them all, so a problem is
+ * never silent even when its field has no input on screen.
+ */
+export function FormStatus({
+  error,
+  success,
+  fields,
+}: {
+  error: string | null;
+  success?: string | null;
+  fields?: Record<string, string>;
+}) {
+  const messages = Object.values(fields ?? {});
+  if (messages.length > 0) {
+    return (
+      <div className="alert alert-error" role="alert">
+        Please correct the following:
+        <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
+          {[...new Set(messages)].map((m) => (
+            <li key={m}>{m}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
   if (error) {
     return (
       <p className="alert alert-error" role="alert">

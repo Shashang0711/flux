@@ -42,6 +42,7 @@ export const NAVIGATION: NavGroup[] = [
         label: 'Reference data',
         permission: 'reference-data.manage',
       },
+      { href: '/admin/custom-fields', label: 'Custom fields', permission: 'custom-field.manage' },
       { href: '/admin/audit', label: 'Audit log', permission: 'audit.view' },
     ],
   },

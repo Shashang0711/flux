@@ -10,3 +10,4 @@ export * from './access/roles';
 export * from './audit/audit';
 export * from './reference/reference';
 export * from './clients/clients';
+export * from './custom-fields/custom-fields';

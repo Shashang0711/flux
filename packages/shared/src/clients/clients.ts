@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { customFieldInputSchema, type CustomFieldValues } from '../custom-fields/custom-fields';
 import { emailSchema } from '../identity/users';
 
 export const ClientStatus = { ACTIVE: 'ACTIVE', INACTIVE: 'INACTIVE' } as const;
@@ -77,6 +78,8 @@ export interface ClientDto extends ClientSummaryDto {
   website: string | null;
   taxNumber: string | null;
   notes: string | null;
+  /** Tenant-defined fields: { [key]: value }. */
+  customFields: CustomFieldValues;
   addresses: ClientAddressDto[];
   contacts: ClientContactDto[];
   billingParties: BillingPartyDto[];
@@ -115,11 +118,18 @@ const clientFields = {
   notes: optionalText(2000),
 };
 
-export const createClientSchema = z.object(clientFields);
+export const createClientSchema = z.object({
+  ...clientFields,
+  customFields: customFieldInputSchema,
+});
 export type CreateClientRequest = z.input<typeof createClientSchema>;
 
 export const updateClientSchema = z
-  .object({ ...clientFields, status: z.enum([ClientStatus.ACTIVE, ClientStatus.INACTIVE]) })
+  .object({
+    ...clientFields,
+    status: z.enum([ClientStatus.ACTIVE, ClientStatus.INACTIVE]),
+    customFields: customFieldInputSchema,
+  })
   .partial()
   .refine((v) => Object.keys(v).length > 0, { message: 'No fields to update' });
 export type UpdateClientRequest = z.output<typeof updateClientSchema>;

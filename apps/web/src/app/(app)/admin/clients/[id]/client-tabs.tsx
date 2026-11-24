@@ -7,6 +7,7 @@ import {
   type ClientAddressDto,
   type ClientContactDto,
   type ClientDto,
+  type CustomFieldDefinitionDto,
 } from '@flux/shared';
 import { Badge, StatusBadge } from '@/components/badges';
 import { Field, FormStatus } from '@/components/field';
@@ -124,12 +125,20 @@ function Editor({ label, children }: { label: string; children: ReactNode }) {
 
 // ─── Overview ───────────────────────────────────────────────────────────────
 
-export function Overview({ client, canManage }: { client: ClientDto; canManage: boolean }) {
+export function Overview({
+  client,
+  canManage,
+  customFields,
+}: {
+  client: ClientDto;
+  canManage: boolean;
+  customFields: CustomFieldDefinitionDto[];
+}) {
   const details = useMutation();
   const status = useMutation();
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const payload = clientPayload(new FormData(event.currentTarget));
+    const payload = clientPayload(new FormData(event.currentTarget), customFields);
     await details.run(
       () => apiFetch(`/clients/${client.id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
       { success: 'Saved.' },
@@ -141,11 +150,13 @@ export function Overview({ client, canManage }: { client: ClientDto; canManage: 
       <section className="card">
         <h2 className="card-title">Company details</h2>
         <form className="form" onSubmit={onSubmit} noValidate>
-          <ClientFields client={client} fields={details.fields} disabled={!canManage} />
-          <FormStatus
-            error={Object.keys(details.fields).length > 0 ? null : details.error}
-            success={details.success}
+          <ClientFields
+            client={client}
+            fields={details.fields}
+            disabled={!canManage}
+            customFields={customFields}
           />
+          <FormStatus error={details.error} fields={details.fields} success={details.success} />
           {canManage && <SubmitRow pending={details.pending} />}
         </form>
       </section>
@@ -244,7 +255,7 @@ function AddressForm({ clientId, address }: { clientId: string; address?: Client
         fields={fields}
         requiredCore
       />
-      <FormStatus error={Object.keys(fields).length > 0 ? null : error} success={success} />
+      <FormStatus error={error} fields={fields} success={success} />
       <SubmitRow pending={pending} label={address ? 'Save' : 'Add address'} />
     </form>
   );
@@ -381,7 +392,7 @@ function ContactForm({ clientId, contact }: { clientId: string; contact?: Client
         <input type="checkbox" name="isPrimary" defaultChecked={contact?.isPrimary} /> Primary
         contact
       </label>
-      <FormStatus error={Object.keys(fields).length > 0 ? null : error} success={success} />
+      <FormStatus error={error} fields={fields} success={success} />
       <SubmitRow pending={pending} label={contact ? 'Save' : 'Add contact'} />
     </form>
   );
@@ -534,7 +545,7 @@ function BillingPartyForm({ clientId, party }: { clientId: string; party?: Billi
           <input type="checkbox" name="isActive" defaultChecked={party.isActive} /> Active
         </label>
       )}
-      <FormStatus error={Object.keys(fields).length > 0 ? null : error} success={success} />
+      <FormStatus error={error} fields={fields} success={success} />
       <SubmitRow pending={pending} label={party ? 'Save' : 'Add billing party'} />
     </form>
   );

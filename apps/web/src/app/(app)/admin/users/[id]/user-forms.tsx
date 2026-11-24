@@ -182,7 +182,7 @@ export function ResetPasswordForm({ user }: { user: UserDto }) {
             required
           />
         </Field>
-        <FormStatus error={Object.keys(fields).length > 0 ? null : error} success={success} />
+        <FormStatus error={error} fields={fields} success={success} />
         <div className="form-actions">
           <button className="btn" type="submit" disabled={pending}>
             {pending ? 'Saving…' : 'Set password'}

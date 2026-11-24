@@ -61,15 +61,15 @@ and manages the organisation's users and roles from there.
 
 ## Scripts (from the repo root)
 
-| Script                            | What it does                                         |
-| --------------------------------- | ---------------------------------------------------- |
-| `npm run dev`                     | API (watch) and web (dev server) together            |
-| `npm run build`                   | Production build of shared → api → web               |
-| `npm run lint` / `typecheck`      | ESLint and TypeScript across all workspaces          |
-| `npm run format` / `format:check` | Prettier                                             |
-| `npm test`                        | Unit + HTTP-pipeline tests (no database needed)      |
-| `npm run test:e2e`                | API end-to-end tests against the real `DATABASE_URL` |
-| `npm run db:migrate` / `db:seed`  | Prisma migrations (dev) and idempotent seed          |
+| Script                            | What it does                                          |
+| --------------------------------- | ----------------------------------------------------- |
+| `npm run dev`                     | API (watch) and web (dev server) together             |
+| `npm run build`                   | Production build of shared → api → web                |
+| `npm run lint` / `typecheck`      | ESLint and TypeScript across all workspaces           |
+| `npm run format` / `format:check` | Prettier                                              |
+| `npm test`                        | Unit + HTTP-pipeline tests (no database needed)       |
+| `npm run test:e2e`                | API end-to-end tests against `<DATABASE_URL db>_test` |
+| `npm run db:migrate` / `db:seed`  | Prisma migrations (dev) and idempotent seed           |
 
 ## API conventions
 
@@ -118,13 +118,19 @@ infrastructure in `apps/api/src/common`.
 Signed-in pages live under `apps/web/src/app/(app)/`. Its layout validates the session once and
 renders the shell: a sidebar built from `lib/navigation.ts`, showing only what the user may access.
 
-| Path                    | Who                | Purpose                                    |
-| ----------------------- | ------------------ | ------------------------------------------ |
-| `/`                     | Everyone signed in | Dashboard                                  |
-| `/account`              | Everyone signed in | Profile and change password                |
-| `/platform/tenants/...` | Platform admins    | Tenants: list, create, modules, suspend    |
-| `/admin/users/...`      | `user.view`        | Users: list, create, roles, disable, reset |
-| `/admin/roles/...`      | `role.view`        | Roles: tabs from the spec, clone           |
+| Path                       | Who                     | Purpose                                                                               |
+| -------------------------- | ----------------------- | ------------------------------------------------------------------------------------- |
+| `/`                        | Everyone signed in      | Dashboard                                                                             |
+| `/account`                 | Everyone signed in      | Profile and change password                                                           |
+| `/platform/tenants/...`    | Platform admins         | Tenants: list, create, modules, suspend                                               |
+| `/admin/users/...`         | `user.view`             | Users: list, create, roles, disable, reset                                            |
+| `/admin/roles/...`         | `role.view`             | Roles: tabs from the spec, clone                                                      |
+| `/admin/clients/...`       | `client.view`           | Clients: grid, create, Overview / Addresses / Contacts / Billing Parties / Audit tabs |
+| `/admin/reference-data`    | `reference-data.manage` | Hide FLUX defaults, add own items                                                     |
+| `/admin/custom-fields`     | `custom-field.manage`   | Define custom fields per record type                                                  |
+| `/admin/audit`             | `audit.view`            | Audit log with filters                                                                |
+| `/platform/reference-data` | Platform admins         | Manage FLUX default reference data                                                    |
+| `/platform/audit`          | Platform admins         | Platform-level audit log                                                              |
 
 Conventions for new screens:
 
@@ -231,6 +237,24 @@ Parts & Pricing.
   them); addresses and contacts can be removed.
 - Every change, including sub-records, is audited on the client's history.
 
+## Custom fields
+
+Tenants add their own fields to records (Admin → Custom fields, `custom-field.manage`). Record
+types are `CUSTOM_FIELD_ENTITIES` in `@flux/shared` (clients now; add vessels, samples, … there).
+
+- Types: short text, long text, number, date, yes/no, dropdown (options). Each field has a label,
+  help text, required flag, sort order and active flag.
+- **Key and type never change** after creation, so stored values stay valid. Label, options,
+  required and order can change; fields are deactivated, never deleted, and values are kept.
+- Values are stored in the record's `custom_fields` JSON column and validated on the server by
+  `validateCustomFieldValues` (shared, unit-tested): unknown or inactive fields are rejected;
+  **required** is enforced on create and a required value can never be cleared (records created
+  before a field became required are not blocked until someone edits that field).
+- Value changes are audited under the field's label, with option labels for dropdowns.
+- To support a new record type: add it to `CUSTOM_FIELD_ENTITIES`, add a `custom_fields JSONB`
+  column, call `CustomFieldsService.resolveValues` in its create/update, and render
+  `<CustomFieldInputs>` on its forms.
+
 ## Numbering
 
 `nextSequence(tx, tenantId, key)` (`apps/api/src/database/sequences.ts`) returns the next number
@@ -261,38 +285,61 @@ When adding a feature that changes data:
 
 ### Endpoints
 
-| Method and path                               | Access         | Purpose                                                                 |
-| --------------------------------------------- | -------------- | ----------------------------------------------------------------------- |
-| `POST /api/v1/auth/login`                     | Public         | Sign in; sets the session cookie                                        |
-| `POST /api/v1/auth/logout`                    | Public         | Revoke the session and clear the cookie                                 |
-| `GET /api/v1/auth/me`                         | Signed in      | Current user                                                            |
-| `POST /api/v1/auth/change-password`           | Signed in      | Change own password; ends other sessions                                |
-| `GET /api/v1/users`                           | `user.view`    | List own tenant's users (`page`, `pageSize`, `q`, `status`)             |
-| `POST /api/v1/users`                          | `user.manage`  | Create a user (optionally with `roleIds`)                               |
-| `GET /api/v1/users/:id`                       | `user.view`    | Read user                                                               |
-| `PATCH /api/v1/users/:id`                     | `user.manage`  | Update name, email or status                                            |
-| `PUT /api/v1/users/:id/roles`                 | `user.manage`  | Replace the user's roles                                                |
-| `POST /api/v1/users/:id/reset-password`       | `user.manage`  | Set a new password; ends their sessions                                 |
-| `GET /api/v1/access/catalogue`                | `role.view`    | Licensed modules, portals and permissions                               |
-| `GET /api/v1/roles`                           | `role.view`    | List roles (`q`, `isActive`)                                            |
-| `POST /api/v1/roles`                          | `role.manage`  | Create role with portals, modules, permissions                          |
-| `GET /api/v1/roles/:id`                       | `role.view`    | Read role and its access                                                |
-| `PATCH /api/v1/roles/:id`                     | `role.manage`  | Name, description, default portal, active                               |
-| `PUT /api/v1/roles/:id/portals`               | `role.manage`  | Portal Access tab                                                       |
-| `PUT /api/v1/roles/:id/modules`               | `role.manage`  | Module Access tab                                                       |
-| `PUT /api/v1/roles/:id/permissions`           | `role.manage`  | Role Permissions tab                                                    |
-| `POST /api/v1/roles/:id/clone`                | `role.manage`  | Clone with copy options                                                 |
-| `GET /api/v1/roles/:id/users`                 | `role.view`    | Assigned Users tab                                                      |
-| `POST /api/v1/roles/:id/users`                | `user.manage`  | Assign users                                                            |
-| `DELETE /api/v1/roles/:id/users/:userId`      | `user.manage`  | Unassign a user                                                         |
-| `GET /api/v1/audit-logs`                      | `audit.view`   | Audit log (`action`, `entityType`, `entityId`, `actorId`, `from`, `to`) |
-| `GET /api/v1/platform/tenants/:id/audit-logs` | Platform admin | Organisation-level history of a tenant                                  |
-| `GET /api/v1/platform/modules`                | Platform admin | Module catalogue                                                        |
-| `GET /api/v1/platform/tenants`                | Platform admin | List tenants (`q`, `status`)                                            |
-| `POST /api/v1/platform/tenants`               | Platform admin | Create tenant + modules + first admin                                   |
-| `GET /api/v1/platform/tenants/:id`            | Platform admin | Read tenant                                                             |
-| `PATCH /api/v1/platform/tenants/:id`          | Platform admin | Rename, suspend or reactivate                                           |
-| `PUT /api/v1/platform/tenants/:id/modules`    | Platform admin | Set licensed optional modules                                           |
+| Method and path                                         | Access                  | Purpose                                                                 |
+| ------------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------- |
+| `POST /api/v1/auth/login`                               | Public                  | Sign in; sets the session cookie                                        |
+| `POST /api/v1/auth/logout`                              | Public                  | Revoke the session and clear the cookie                                 |
+| `GET /api/v1/auth/me`                                   | Signed in               | Current user                                                            |
+| `POST /api/v1/auth/change-password`                     | Signed in               | Change own password; ends other sessions                                |
+| `GET /api/v1/users`                                     | `user.view`             | List own tenant's users (`page`, `pageSize`, `q`, `status`)             |
+| `POST /api/v1/users`                                    | `user.manage`           | Create a user (optionally with `roleIds`)                               |
+| `GET /api/v1/users/:id`                                 | `user.view`             | Read user                                                               |
+| `PATCH /api/v1/users/:id`                               | `user.manage`           | Update name, email or status                                            |
+| `PUT /api/v1/users/:id/roles`                           | `user.manage`           | Replace the user's roles                                                |
+| `POST /api/v1/users/:id/reset-password`                 | `user.manage`           | Set a new password; ends their sessions                                 |
+| `GET /api/v1/access/catalogue`                          | `role.view`             | Licensed modules, portals and permissions                               |
+| `GET /api/v1/roles`                                     | `role.view`             | List roles (`q`, `isActive`)                                            |
+| `POST /api/v1/roles`                                    | `role.manage`           | Create role with portals, modules, permissions                          |
+| `GET /api/v1/roles/:id`                                 | `role.view`             | Read role and its access                                                |
+| `PATCH /api/v1/roles/:id`                               | `role.manage`           | Name, description, default portal, active                               |
+| `PUT /api/v1/roles/:id/portals`                         | `role.manage`           | Portal Access tab                                                       |
+| `PUT /api/v1/roles/:id/modules`                         | `role.manage`           | Module Access tab                                                       |
+| `PUT /api/v1/roles/:id/permissions`                     | `role.manage`           | Role Permissions tab                                                    |
+| `POST /api/v1/roles/:id/clone`                          | `role.manage`           | Clone with copy options                                                 |
+| `GET /api/v1/roles/:id/users`                           | `role.view`             | Assigned Users tab                                                      |
+| `POST /api/v1/roles/:id/users`                          | `user.manage`           | Assign users                                                            |
+| `DELETE /api/v1/roles/:id/users/:userId`                | `user.manage`           | Unassign a user                                                         |
+| `GET /api/v1/audit-logs`                                | `audit.view`            | Audit log (`action`, `entityType`, `entityId`, `actorId`, `from`, `to`) |
+| `GET /api/v1/platform/tenants/:id/audit-logs`           | Platform admin          | Organisation-level history of a tenant                                  |
+| `GET /api/v1/platform/modules`                          | Platform admin          | Module catalogue                                                        |
+| `GET /api/v1/platform/tenants`                          | Platform admin          | List tenants (`q`, `status`)                                            |
+| `POST /api/v1/platform/tenants`                         | Platform admin          | Create tenant + modules + first admin                                   |
+| `GET /api/v1/platform/tenants/:id`                      | Platform admin          | Read tenant                                                             |
+| `PATCH /api/v1/platform/tenants/:id`                    | Platform admin          | Rename, suspend or reactivate                                           |
+| `PUT /api/v1/platform/tenants/:id/modules`              | Platform admin          | Set licensed optional modules                                           |
+| `GET /api/v1/platform/audit-logs`                       | Platform admin          | Platform-level audit entries                                            |
+| `GET/POST /api/v1/platform/reference-data/:list`        | Platform admin          | List / add FLUX defaults                                                |
+| `PATCH /api/v1/platform/reference-data/:list/:id`       | Platform admin          | Edit / deactivate a FLUX default                                        |
+| `GET /api/v1/reference-data`                            | Signed in (tenant)      | Lists available to the organisation                                     |
+| `GET /api/v1/reference-data/:list`                      | Signed in (tenant)      | Items (`view=usable` default, or `all`)                                 |
+| `POST /api/v1/reference-data/:list`                     | `reference-data.manage` | Add an own item                                                         |
+| `PATCH /api/v1/reference-data/:list/:id`                | `reference-data.manage` | Edit / deactivate an own item                                           |
+| `PUT /api/v1/reference-data/:list/:id/visibility`       | `reference-data.manage` | Hide or show a FLUX default                                             |
+| `GET /api/v1/clients`                                   | `client.view`           | List (`q`, `status`)                                                    |
+| `POST /api/v1/clients`                                  | `client.manage`         | Create (Client ID generated; `customFields`)                            |
+| `GET /api/v1/clients/:id`                               | `client.view`           | Read with addresses, contacts, billing parties                          |
+| `PATCH /api/v1/clients/:id`                             | `client.manage`         | Update, (de)activate, `customFields`                                    |
+| `POST /api/v1/clients/:id/addresses`                    | `client.manage`         | Add address                                                             |
+| `PATCH/DELETE /api/v1/clients/:id/addresses/:addressId` | `client.manage`         | Edit / remove address                                                   |
+| `POST /api/v1/clients/:id/contacts`                     | `client.manage`         | Add contact                                                             |
+| `PATCH/DELETE /api/v1/clients/:id/contacts/:contactId`  | `client.manage`         | Edit / remove contact                                                   |
+| `GET /api/v1/clients/:id/billing-parties`               | `client.view`           | Billing Party Grid                                                      |
+| `POST /api/v1/clients/:id/billing-parties`              | `client.manage`         | Billing Party Add                                                       |
+| `PATCH /api/v1/clients/:id/billing-parties/:partyId`    | `client.manage`         | Edit, default, (de)activate                                             |
+| `GET /api/v1/custom-fields/entities`                    | Signed in (tenant)      | Record types available to the organisation                              |
+| `GET /api/v1/custom-fields?entity=client`               | Signed in (tenant)      | Field definitions (`view=all` includes inactive)                        |
+| `POST /api/v1/custom-fields`                            | `custom-field.manage`   | Define a field                                                          |
+| `PATCH /api/v1/custom-fields/:id`                       | `custom-field.manage`   | Edit label, options, required, order, active                            |
 
 ## Database conventions
 

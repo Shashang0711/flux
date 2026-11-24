@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import { Forbidden } from '@/components/forbidden';
 import { PageHeader } from '@/components/page-header';
-import { sessionWithPermission } from '@/lib/server-api';
+import type { CustomFieldDefinitionDto } from '@flux/shared';
+import { loadOrNotFound, sessionWithPermission } from '@/lib/server-api';
 import { NewClientForm } from './new-client-form';
 
 export const metadata: Metadata = { title: 'New client · FLUX' };
@@ -9,6 +10,9 @@ export const metadata: Metadata = { title: 'New client · FLUX' };
 export default async function NewClientPage() {
   const { allowed } = await sessionWithPermission('client.manage');
   if (!allowed) return <Forbidden />;
+  const { data: customFields } = await loadOrNotFound<CustomFieldDefinitionDto[]>(
+    '/custom-fields?entity=client',
+  );
   return (
     <>
       <PageHeader
@@ -17,7 +21,7 @@ export default async function NewClientPage() {
         back={{ href: '/admin/clients', label: 'Clients' }}
       />
       <div className="card">
-        <NewClientForm />
+        <NewClientForm customFields={customFields} />
       </div>
     </>
   );

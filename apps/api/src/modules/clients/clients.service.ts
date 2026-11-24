@@ -6,6 +6,7 @@ import {
   type ClientDto,
   type ClientListFilter,
   type ClientSummaryDto,
+  type CustomFieldValues,
   type PageQuery,
   type UpdateClientRequest,
   billingPartySchema,
@@ -23,6 +24,7 @@ import { nextSequence } from '../../database/sequences';
 import { TenantDb, type TenantTx } from '../../database/tenant-db.service';
 import { compactChanges, fieldChanges, recordAudit, type AuditEntry } from '../audit/audit';
 import type { AuthUser, TenantContext } from '../auth/auth.types';
+import { CustomFieldsService } from '../custom-fields/custom-fields.service';
 import {
   BILLING_PARTY_ORDER,
   CLIENT_DETAIL_INCLUDE,
@@ -78,7 +80,10 @@ type Client = Prisma.ClientGetPayload<object>;
  */
 @Injectable()
 export class ClientsService {
-  constructor(private readonly db: TenantDb) {}
+  constructor(
+    private readonly db: TenantDb,
+    private readonly customFields: CustomFieldsService,
+  ) {}
 
   list(
     ctx: TenantContext,
@@ -122,8 +127,13 @@ export class ClientsService {
     actor: AuthUser,
   ): Promise<ClientDto> {
     return this.db.run(ctx.tenantId, async (tx) => {
+      const { customFields: customInput, ...fields } = input;
+      // Validate custom fields before taking a number, so invalid input never touches the sequence.
+      const custom = await this.customFields.resolveValues(tx, 'client', customInput, 'create');
       const code = formatClientCode(await nextSequence(tx, ctx.tenantId, 'client'));
-      const client = await tx.client.create({ data: { ...input, tenantId: ctx.tenantId, code } });
+      const client = await tx.client.create({
+        data: { ...fields, tenantId: ctx.tenantId, code, customFields: custom.values },
+      });
       await this.audit(tx, ctx, actor, client, 'client.created', {
         changes: compactChanges({
           code: { from: null, to: code },
@@ -132,6 +142,7 @@ export class ClientsService {
             client,
             CLIENT_FIELDS.filter((f) => f !== 'status'),
           ),
+          ...custom.changes,
         }),
       });
       return this.detail(tx, client.id);
@@ -146,8 +157,22 @@ export class ClientsService {
   ): Promise<ClientDto> {
     return this.db.run(ctx.tenantId, async (tx) => {
       const before = await this.find(tx, id);
-      const updated = await tx.client.update({ where: { id }, data: input });
-      const changes = fieldChanges(before, updated, CLIENT_FIELDS);
+      const { customFields: customInput, ...fields } = input;
+      const custom =
+        customInput === undefined
+          ? null
+          : await this.customFields.resolveValues(
+              tx,
+              'client',
+              customInput,
+              'update',
+              before.customFields as CustomFieldValues,
+            );
+      const updated = await tx.client.update({
+        where: { id },
+        data: { ...fields, ...(custom ? { customFields: custom.values } : {}) },
+      });
+      const changes = { ...fieldChanges(before, updated, CLIENT_FIELDS), ...custom?.changes };
       if (Object.keys(changes).length > 0) {
         await this.audit(
           tx,

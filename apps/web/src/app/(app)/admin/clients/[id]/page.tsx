@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import type { AuditLogDto, ClientDto } from '@flux/shared';
+import type { AuditLogDto, ClientDto, CustomFieldDefinitionDto } from '@flux/shared';
 import { AuditTable } from '@/components/audit-table';
 import { StatusBadge } from '@/components/badges';
 import { Forbidden } from '@/components/forbidden';
@@ -35,6 +35,10 @@ export default async function ClientPage({
   const tab = tabs.find((t) => t.key === requested)?.key ?? 'overview';
 
   const { data: client } = await loadOrNotFound<ClientDto>(`/clients/${id}`);
+  const customFields =
+    tab === 'overview'
+      ? (await loadOrNotFound<CustomFieldDefinitionDto[]>('/custom-fields?entity=client')).data
+      : [];
   const history =
     tab === 'audit'
       ? (await loadOrNotFound<AuditLogDto[]>(`/audit-logs?entityId=${id}&pageSize=50`)).data
@@ -59,7 +63,9 @@ export default async function ClientPage({
         </p>
       )}
       <ListTabs basePath={`/admin/clients/${id}`} param="tab" active={tab} tabs={tabs} />
-      {tab === 'overview' && <Overview client={client} canManage={canManage} />}
+      {tab === 'overview' && (
+        <Overview client={client} canManage={canManage} customFields={customFields} />
+      )}
       {tab === 'addresses' && <Addresses client={client} canManage={canManage} />}
       {tab === 'contacts' && <Contacts client={client} canManage={canManage} />}
       {tab === 'billing' && <BillingParties client={client} canManage={canManage} />}
