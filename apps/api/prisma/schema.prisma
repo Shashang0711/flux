@@ -33,26 +33,34 @@ model Tenant {
   createdAt DateTime     @default(now()) @map("created_at")
   updatedAt DateTime     @updatedAt @map("updated_at")
 
-  modules         TenantModule[]
-  users           User[]
-  roles           Role[]
-  rolePortals     RolePortal[]
-  roleModules     RoleModule[]
-  rolePermissions RolePermission[]
-  userRoles       UserRole[]
-  auditLogs       AuditLog[]
-  referenceItems  ReferenceItem[]
-  hiddenReference ReferenceItemHidden[]
-  sequences       TenantSequence[]
-  clients         Client[]
-  clientAddresses ClientAddress[]
-  clientContacts  ClientContact[]
-  billingParties  BillingParty[]
-  customFields    CustomFieldDefinition[]
-  vessels         Vessel[]
-  relationships   VesselClientRelationship[]
-  fleets          Fleet[]
-  fleetVessels    FleetVessel[]
+  modules                                  TenantModule[]
+  users                                    User[]
+  roles                                    Role[]
+  rolePortals                              RolePortal[]
+  roleModules                              RoleModule[]
+  rolePermissions                          RolePermission[]
+  userRoles                                UserRole[]
+  auditLogs                                AuditLog[]
+  referenceItems                           ReferenceItem[]
+  hiddenReference                          ReferenceItemHidden[]
+  sequences                                TenantSequence[]
+  clients                                  Client[]
+  clientAddresses                          ClientAddress[]
+  clientContacts                           ClientContact[]
+  billingParties                           BillingParty[]
+  customFields                             CustomFieldDefinition[]
+  vessels                                  Vessel[]
+  relationships                            VesselClientRelationship[]
+  fleets                                   Fleet[]
+  fleetVessels                             FleetVessel[]
+  clientNotificationRules                  ClientNotificationRule[]
+  clientNotificationRuleContacts           ClientNotificationRuleContact[]
+  vesselBillingOverrides                   VesselBillingOverride[]
+  vesselContacts                           VesselContact[]
+  vesselHiddenClientContacts               VesselHiddenClientContact[]
+  vesselNotificationOverrides              VesselNotificationOverride[]
+  vesselNotificationOverrideContacts       VesselNotificationOverrideContact[]
+  vesselNotificationOverrideVesselContacts VesselNotificationOverrideVesselContact[]
 
   @@map("tenants")
 }
@@ -356,6 +364,15 @@ model Client {
   fleets        Fleet[]
   fleetVessels  FleetVessel[]
 
+  notificationRules            ClientNotificationRule[]
+  notificationRuleContacts     ClientNotificationRuleContact[]
+  vesselBillingOverrides       VesselBillingOverride[]
+  vesselContacts               VesselContact[]
+  vesselHiddenContacts         VesselHiddenClientContact[]
+  vesselNotificationOverrides  VesselNotificationOverride[]
+  vesselOverrideContacts       VesselNotificationOverrideContact[]
+  vesselOverrideVesselContacts VesselNotificationOverrideVesselContact[]
+
   @@unique([tenantId, code])
   @@unique([id, tenantId])
   @@index([tenantId, name])
@@ -401,6 +418,12 @@ model ClientContact {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   client Client @relation(fields: [clientId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
+  hiddenOnVessels       VesselHiddenClientContact[]
+  notificationRules     ClientNotificationRuleContact[]
+  notificationOverrides VesselNotificationOverrideContact[]
+
+  /// Target for override tables, pinning a contact to the same client.
+  @@unique([id, clientId])
   @@index([clientId])
   @@index([tenantId])
   @@map("client_contacts")
@@ -430,7 +453,11 @@ model BillingParty {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   client Client @relation(fields: [clientId, tenantId], references: [id, tenantId], onDelete: Restrict)
 
+  vesselOverrides VesselBillingOverride[]
+
   @@unique([id, tenantId])
+  /// Target for vessel_billing_overrides, pinning the party to the relationship's client.
+  @@unique([id, clientId])
   @@index([clientId])
   @@index([tenantId])
   @@map("billing_parties")
@@ -552,6 +579,11 @@ model VesselClientRelationship {
   relationshipType ReferenceItem @relation("RelationshipType", fields: [relationshipTypeId, relationshipTypeList], references: [id, listKey], onDelete: Restrict)
   fleetMemberships FleetVessel[]
 
+  billingOverrides      VesselBillingOverride[]
+  vesselContacts        VesselContact[]
+  hiddenClientContacts  VesselHiddenClientContact[]
+  notificationOverrides VesselNotificationOverride[]
+
   @@unique([id, tenantId])
   /// Target for fleet_vessels, pinning a membership to this relationship's vessel and client.
   @@unique([id, vesselId, clientId])
@@ -603,4 +635,175 @@ model FleetVessel {
   @@index([fleetId])
   @@index([relationshipId])
   @@map("fleet_vessels")
+}
+
+// ─── Notifications and vessel overrides (M8) ────────────────────────────────
+// Design pack §15: client settings are the default; a vessel stores only its overrides, per
+// vessel–client relationship. Every table carries client_id: composite FKs pin parties, contacts
+// and relationships to that one client, and (client_id, tenant_id) pins the client to the tenant.
+
+/// The client's rule for one notification event (keys: NOTIFICATION_EVENTS in @flux/shared).
+model ClientNotificationRule {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  clientId    String   @map("client_id") @db.Uuid
+  event       String
+  enabled     Boolean  @default(false)
+  /// Extra recipients that are not contacts.
+  extraEmails String[] @default([]) @map("extra_emails")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client   Client                          @relation(fields: [clientId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  contacts ClientNotificationRuleContact[]
+
+  @@unique([clientId, event])
+  @@unique([id, clientId])
+  @@map("client_notification_rules")
+}
+
+model ClientNotificationRuleContact {
+  id        String @id @default(uuid()) @db.Uuid
+  tenantId  String @map("tenant_id") @db.Uuid
+  clientId  String @map("client_id") @db.Uuid
+  ruleId    String @map("rule_id") @db.Uuid
+  contactId String @map("contact_id") @db.Uuid
+
+  tenant  Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client  Client                 @relation(fields: [clientId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  rule    ClientNotificationRule @relation(fields: [ruleId, clientId], references: [id, clientId], onDelete: Cascade, onUpdate: NoAction)
+  contact ClientContact          @relation(fields: [contactId, clientId], references: [id, clientId], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([ruleId, contactId])
+  @@index([contactId])
+  @@map("client_notification_rule_contacts")
+}
+
+/// The client billing party invoiced for this vessel instead of the client's default.
+model VesselBillingOverride {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  relationshipId String   @unique @map("relationship_id") @db.Uuid
+  vesselId       String   @map("vessel_id") @db.Uuid
+  clientId       String   @map("client_id") @db.Uuid
+  billingPartyId String   @map("billing_party_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client       Client                   @relation(fields: [clientId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  relationship VesselClientRelationship @relation(fields: [relationshipId, vesselId, clientId], references: [id, vesselId, clientId], onDelete: Restrict, onUpdate: NoAction)
+  billingParty BillingParty             @relation(fields: [billingPartyId, clientId], references: [id, clientId], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([billingPartyId])
+  @@map("vessel_billing_overrides")
+}
+
+/// A contact for this vessel only (e.g. master, chief engineer), under one client relationship.
+model VesselContact {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  relationshipId String   @map("relationship_id") @db.Uuid
+  vesselId       String   @map("vessel_id") @db.Uuid
+  clientId       String   @map("client_id") @db.Uuid
+  name           String
+  jobTitle       String?  @map("job_title")
+  email          String?
+  phone          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant                Tenant                                    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client                Client                                    @relation(fields: [clientId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  relationship          VesselClientRelationship                  @relation(fields: [relationshipId, vesselId, clientId], references: [id, vesselId, clientId], onDelete: Restrict, onUpdate: NoAction)
+  notificationOverrides VesselNotificationOverrideVesselContact[]
+
+  /// Target for override recipients, pinning the contact to the same relationship.
+  @@unique([id, relationshipId])
+  @@index([relationshipId])
+  @@map("vessel_contacts")
+}
+
+/// A client contact that does not apply to this vessel (also dropped from inherited recipients).
+model VesselHiddenClientContact {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  relationshipId String   @map("relationship_id") @db.Uuid
+  vesselId       String   @map("vessel_id") @db.Uuid
+  clientId       String   @map("client_id") @db.Uuid
+  contactId      String   @map("contact_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client       Client                   @relation(fields: [clientId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  relationship VesselClientRelationship @relation(fields: [relationshipId, vesselId, clientId], references: [id, vesselId, clientId], onDelete: Restrict, onUpdate: NoAction)
+  contact      ClientContact            @relation(fields: [contactId, clientId], references: [id, clientId], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([relationshipId, contactId])
+  @@index([contactId])
+  @@map("vessel_hidden_client_contacts")
+}
+
+/// What this vessel changes about the client's rule for one event; only changed parts are set.
+model VesselNotificationOverride {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  relationshipId   String   @map("relationship_id") @db.Uuid
+  vesselId         String   @map("vessel_id") @db.Uuid
+  clientId         String   @map("client_id") @db.Uuid
+  event            String
+  /// null: on/off as the client's rule.
+  enabled          Boolean?
+  /// false: the client's recipients; true: this override's contacts and extra emails.
+  customRecipients Boolean  @default(false) @map("custom_recipients")
+  extraEmails      String[] @default([]) @map("extra_emails")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant         Tenant                                    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client         Client                                    @relation(fields: [clientId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  relationship   VesselClientRelationship                  @relation(fields: [relationshipId, vesselId, clientId], references: [id, vesselId, clientId], onDelete: Restrict, onUpdate: NoAction)
+  clientContacts VesselNotificationOverrideContact[]
+  vesselContacts VesselNotificationOverrideVesselContact[]
+
+  @@unique([relationshipId, event])
+  @@unique([id, relationshipId, clientId])
+  @@map("vessel_notification_overrides")
+}
+
+model VesselNotificationOverrideContact {
+  id             String @id @default(uuid()) @db.Uuid
+  tenantId       String @map("tenant_id") @db.Uuid
+  overrideId     String @map("override_id") @db.Uuid
+  relationshipId String @map("relationship_id") @db.Uuid
+  clientId       String @map("client_id") @db.Uuid
+  contactId      String @map("contact_id") @db.Uuid
+
+  tenant   Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client   Client                     @relation(fields: [clientId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  override VesselNotificationOverride @relation(fields: [overrideId, relationshipId, clientId], references: [id, relationshipId, clientId], onDelete: Cascade, onUpdate: NoAction)
+  contact  ClientContact              @relation(fields: [contactId, clientId], references: [id, clientId], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([overrideId, contactId])
+  @@index([contactId])
+  @@map("vessel_notification_override_contacts")
+}
+
+model VesselNotificationOverrideVesselContact {
+  id             String @id @default(uuid()) @db.Uuid
+  tenantId       String @map("tenant_id") @db.Uuid
+  overrideId     String @map("override_id") @db.Uuid
+  relationshipId String @map("relationship_id") @db.Uuid
+  clientId       String @map("client_id") @db.Uuid
+  contactId      String @map("vessel_contact_id") @db.Uuid
+
+  tenant   Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client   Client                     @relation(fields: [clientId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  override VesselNotificationOverride @relation(fields: [overrideId, relationshipId, clientId], references: [id, relationshipId, clientId], onDelete: Cascade, onUpdate: NoAction)
+  contact  VesselContact              @relation(fields: [contactId, relationshipId], references: [id, relationshipId], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([overrideId, contactId])
+  @@index([contactId])
+  @@map("vessel_notification_override_vessel_contacts")
 }

@@ -383,6 +383,67 @@ code {
   color: var(--brand);
 }
 
+.badge-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+/* Read-only label/value pairs; two columns from tablet width. */
+.details {
+  display: grid;
+  gap: 12px 24px;
+  margin: 0;
+}
+
+@media (min-width: 640px) {
+  .details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.details dt {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.details dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+/* A fieldset of checkboxes (e.g. notification recipients). */
+.check-group {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.check-group legend {
+  padding: 0 4px;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.check-group .check {
+  align-items: flex-start;
+}
+
+/* Inline lists of names inside table cells. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 /* ─── Tables (DataTable stacks rows into cards on phones) ────────────────── */
 
 .table-wrap {
@@ -429,6 +490,11 @@ code {
   text-align: right;
   white-space: nowrap;
   width: 1%;
+}
+
+/* Space between action buttons (dialogs sit between them in the DOM and are skipped). */
+.table .cell-actions > :not(dialog) ~ :not(dialog) {
+  margin-left: 6px;
 }
 
 .table .cell-sub {

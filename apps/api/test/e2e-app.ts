@@ -31,7 +31,9 @@ export async function resetDatabase(prisma: PrismaService): Promise<void> {
   const db = rows[0]?.db ?? '';
   if (!db.endsWith('_test')) throw new Error(`Refusing to truncate non-test database "${db}"`);
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "fleet_vessels", "fleets", "vessel_client_relationships", "vessels", "custom_field_definitions", "billing_parties", "client_contacts", "client_addresses", "clients", ' +
+    'TRUNCATE TABLE "vessel_notification_override_vessel_contacts", "vessel_notification_override_contacts", "vessel_notification_overrides", ' +
+      '"vessel_hidden_client_contacts", "vessel_contacts", "vessel_billing_overrides", "client_notification_rule_contacts", "client_notification_rules", ' +
+      '"fleet_vessels", "fleets", "vessel_client_relationships", "vessels", "custom_field_definitions", "billing_parties", "client_contacts", "client_addresses", "clients", ' +
       '"tenant_sequences", "reference_item_hidden", "reference_items", "audit_logs", "user_roles", "role_permissions", "role_modules", "role_portals", "roles", ' +
       '"sessions", "users", "tenant_modules", "tenants" RESTART IDENTITY CASCADE',
   );

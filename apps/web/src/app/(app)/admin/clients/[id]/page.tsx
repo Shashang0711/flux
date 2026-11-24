@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import type {
   AuditLogDto,
   ClientDto,
+  ClientNotificationRuleDto,
   CustomFieldDefinitionDto,
   FleetDto,
   VesselRelationshipDto,
@@ -14,6 +15,7 @@ import { PageHeader } from '@/components/page-header';
 import { readParams } from '@/components/pagination';
 import { loadOrNotFound, sessionWithPermission } from '@/lib/server-api';
 import { ClientFleets, ClientVessels } from './client-fleets';
+import { ClientNotifications } from './client-notifications';
 import { Addresses, BillingParties, Contacts, Overview } from './client-tabs';
 
 export const metadata: Metadata = { title: 'Client · FLUX' };
@@ -36,6 +38,7 @@ export default async function ClientPage({
     { key: 'addresses', name: 'Addresses' },
     { key: 'contacts', name: 'Contacts' },
     { key: 'billing', name: 'Billing Parties' },
+    { key: 'notifications', name: 'Notifications' },
     ...(session.modules.includes('vessels') && permissions.includes('vessel.view')
       ? [
           { key: 'vessels', name: 'Vessels' },
@@ -82,6 +85,16 @@ export default async function ClientPage({
       {tab === 'addresses' && <Addresses client={client} canManage={canManage} />}
       {tab === 'contacts' && <Contacts client={client} canManage={canManage} />}
       {tab === 'billing' && <BillingParties client={client} canManage={canManage} />}
+      {tab === 'notifications' && (
+        <ClientNotifications
+          client={client}
+          rules={
+            (await loadOrNotFound<ClientNotificationRuleDto[]>(`/clients/${id}/notification-rules`))
+              .data
+          }
+          canManage={canManage}
+        />
+      )}
       {tab === 'vessels' && (
         <ClientVessels
           relationships={
