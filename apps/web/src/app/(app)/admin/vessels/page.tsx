@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import type { PageMeta, ReferenceItemDto, VesselSummaryDto } from '@flux/shared';
 import { StatusBadge } from '@/components/badges';
+import { DataTable } from '@/components/data-table';
 import { Forbidden } from '@/components/forbidden';
 import { PageHeader } from '@/components/page-header';
 import { Pagination, readParams } from '@/components/pagination';
@@ -40,10 +41,9 @@ export default async function VesselsPage({
         }
       />
       <div className="stack">
-        <form className="row" role="search">
+        <form className="toolbar" role="search">
           <input
             className="input"
-            style={{ maxWidth: 320 }}
             name="q"
             placeholder="Name, previous name, IMO or vessel code"
             defaultValue={params.q}
@@ -51,7 +51,6 @@ export default async function VesselsPage({
           />
           <select
             className="select"
-            style={{ maxWidth: 200 }}
             name="vesselTypeId"
             defaultValue={params.vesselTypeId ?? ''}
             aria-label="Vessel type"
@@ -65,7 +64,6 @@ export default async function VesselsPage({
           </select>
           <select
             className="select"
-            style={{ maxWidth: 160 }}
             name="status"
             defaultValue={params.status ?? ''}
             aria-label="Status"
@@ -78,43 +76,29 @@ export default async function VesselsPage({
             Filter
           </button>
         </form>
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Vessel</th>
-                <th>IMO</th>
-                <th>Type</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vessels.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="muted">
-                    No vessels found.
-                  </td>
-                </tr>
-              )}
-              {vessels.map((v) => (
-                <tr key={v.id}>
-                  <td>
+        <DataTable
+          label="Vessels"
+          rows={vessels}
+          rowKey={(v) => v.id}
+          empty="No vessels found."
+          columns={[
+            {
+              header: 'Vessel',
+              primary: true,
+              cell: (v) => (
+                <>
+                  <Link href={`/admin/vessels/${v.id}`}>{v.name}</Link>
+                  <span className="cell-sub">
                     <code>{v.code}</code>
-                  </td>
-                  <td>
-                    <Link href={`/admin/vessels/${v.id}`}>{v.name}</Link>
-                  </td>
-                  <td>{v.imoNumber ?? <span className="muted">—</span>}</td>
-                  <td>{v.vesselType?.name ?? <span className="muted">—</span>}</td>
-                  <td>
-                    <StatusBadge status={v.status} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </span>
+                </>
+              ),
+            },
+            { header: 'IMO', cell: (v) => v.imoNumber ?? <span className="muted">—</span> },
+            { header: 'Type', cell: (v) => v.vesselType?.name ?? <span className="muted">—</span> },
+            { header: 'Status', cell: (v) => <StatusBadge status={v.status} /> },
+          ]}
+        />
         <Pagination meta={meta as PageMeta} basePath="/admin/vessels" params={params} />
       </div>
     </>

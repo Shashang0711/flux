@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import type { PageMeta, UserDto } from '@flux/shared';
 import { StatusBadge } from '@/components/badges';
+import { DataTable } from '@/components/data-table';
 import { Forbidden } from '@/components/forbidden';
 import { PageHeader } from '@/components/page-header';
 import { Pagination, readParams } from '@/components/pagination';
@@ -45,10 +46,9 @@ export default async function UsersPage({
         }
       />
       <div className="stack">
-        <form className="row" role="search">
+        <form className="toolbar" role="search">
           <input
             className="input"
-            style={{ maxWidth: 320 }}
             name="q"
             placeholder="Search name or email"
             defaultValue={params.q}
@@ -56,7 +56,6 @@ export default async function UsersPage({
           />
           <select
             className="select"
-            style={{ maxWidth: 180 }}
             name="status"
             defaultValue={params.status ?? ''}
             aria-label="Status"
@@ -69,45 +68,30 @@ export default async function UsersPage({
             Filter
           </button>
         </form>
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Roles</th>
-                <th>Status</th>
-                <th>Last sign-in</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="muted">
-                    No users found.
-                  </td>
-                </tr>
-              )}
-              {users.map((user) => (
-                <tr key={user.id}>
-                  <td>
-                    <Link href={`/admin/users/${user.id}`}>{user.name}</Link>
-                  </td>
-                  <td>{user.email}</td>
-                  <td>
-                    {user.roles.map((r) => r.name).join(', ') || (
-                      <span className="muted">None</span>
-                    )}
-                  </td>
-                  <td>
-                    <StatusBadge status={user.status} />
-                  </td>
-                  <td className="muted">{formatDate(user.lastLoginAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          label="Users"
+          rows={users}
+          rowKey={(u) => u.id}
+          empty="No users found."
+          columns={[
+            {
+              header: 'Name',
+              primary: true,
+              cell: (u) => <Link href={`/admin/users/${u.id}`}>{u.name}</Link>,
+            },
+            { header: 'Email', cell: (u) => u.email },
+            {
+              header: 'Roles',
+              cell: (u) =>
+                u.roles.map((r) => r.name).join(', ') || <span className="muted">None</span>,
+            },
+            { header: 'Status', cell: (u) => <StatusBadge status={u.status} /> },
+            {
+              header: 'Last sign-in',
+              cell: (u) => <span className="muted">{formatDate(u.lastLoginAt)}</span>,
+            },
+          ]}
+        />
         <Pagination meta={meta as PageMeta} basePath="/admin/users" params={params} />
       </div>
     </>

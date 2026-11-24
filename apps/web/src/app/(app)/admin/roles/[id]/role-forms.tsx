@@ -5,6 +5,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import type { RoleDto, RoleUserDto, UserDto } from '@flux/shared';
 import { Field, FormStatus } from '@/components/field';
 import { StatusBadge } from '@/components/badges';
+import { DataTable } from '@/components/data-table';
 import { useMutation } from '@/hooks/use-mutation';
 import { apiFetch } from '@/lib/api';
 import type { AccessCatalogue } from '../catalogue';
@@ -286,48 +287,35 @@ export function AssignedUsers({
   return (
     <div className="stack">
       <FormStatus error={error} />
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Status</th>
-              {canAssign && <th aria-label="Actions" />}
-            </tr>
-          </thead>
-          <tbody>
-            {assigned.length === 0 && (
-              <tr>
-                <td colSpan={canAssign ? 4 : 3} className="muted">
-                  No users have this role.
-                </td>
-              </tr>
-            )}
-            {assigned.map((user) => (
-              <tr key={user.id}>
-                <td>{user.name}</td>
-                <td>{user.email}</td>
-                <td>
-                  <StatusBadge status={user.status} />
-                </td>
-                {canAssign && (
-                  <td style={{ textAlign: 'right' }}>
+      <DataTable
+        label="Assigned users"
+        rows={assigned}
+        rowKey={(u) => u.id}
+        empty="No users have this role."
+        columns={[
+          { header: 'Name', primary: true, cell: (u) => u.name },
+          { header: 'Email', cell: (u) => u.email },
+          { header: 'Status', cell: (u) => <StatusBadge status={u.status} /> },
+          ...(canAssign
+            ? [
+                {
+                  header: 'Actions',
+                  actions: true,
+                  cell: (u: RoleUserDto) => (
                     <button
                       className="btn btn-danger"
                       type="button"
                       disabled={pending}
-                      onClick={() => remove(user)}
+                      onClick={() => remove(u)}
                     >
                       Remove
                     </button>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                  ),
+                },
+              ]
+            : []),
+        ]}
+      />
       {canAssign && unassigned.length > 0 && (
         <form className="stack" style={{ gap: 8 }} onSubmit={add}>
           <h3 className="card-title" style={{ margin: 0 }}>

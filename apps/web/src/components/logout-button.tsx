@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { apiFetch } from '@/lib/api';
+import { Icon } from './icons';
 
 export function LogoutButton({ className }: { className?: string }) {
   const router = useRouter();
@@ -20,6 +21,7 @@ export function LogoutButton({ className }: { className?: string }) {
 
   return (
     <button type="button" className={className} onClick={logout} disabled={pending}>
+      <Icon name="logout" size={16} />
       {pending ? 'Signing out…' : 'Sign out'}
     </button>
   );

@@ -1,8 +1,10 @@
 import type { PermissionKey, SessionInfo } from '@flux/shared';
+import type { IconName } from '@/components/icons';
 
 export interface NavItem {
   href: string;
   label: string;
+  icon: IconName;
   /** Shown only to platform administrators. */
   platformOnly?: boolean;
   /** Shown only to tenant users holding this permission. */
@@ -15,38 +17,49 @@ export interface NavGroup {
 }
 
 /**
- * Sidebar structure. Later milestones add their screens here (Clients, Vessels, Samples, ...),
- * each with the permission that gates it.
+ * Sidebar structure. Later milestones add their screens here (Samples, Reports, ...), each with
+ * the permission that gates it and an icon.
  */
 export const NAVIGATION: NavGroup[] = [
-  { label: 'Overview', items: [{ href: '/', label: 'Dashboard' }] },
+  { label: 'Overview', items: [{ href: '/', label: 'Dashboard', icon: 'dashboard' }] },
   {
     label: 'Platform',
     items: [
-      { href: '/platform/tenants', label: 'Tenants', platformOnly: true },
-      { href: '/platform/reference-data', label: 'Reference data', platformOnly: true },
-      { href: '/platform/audit', label: 'Audit log', platformOnly: true },
+      { href: '/platform/tenants', label: 'Tenants', icon: 'tenants', platformOnly: true },
+      {
+        href: '/platform/reference-data',
+        label: 'Reference data',
+        icon: 'reference',
+        platformOnly: true,
+      },
+      { href: '/platform/audit', label: 'Audit log', icon: 'audit', platformOnly: true },
     ],
   },
   {
     label: 'Clients',
     items: [
-      { href: '/admin/clients', label: 'Clients', permission: 'client.view' },
-      { href: '/admin/vessels', label: 'Vessels', permission: 'vessel.view' },
+      { href: '/admin/clients', label: 'Clients', icon: 'clients', permission: 'client.view' },
+      { href: '/admin/vessels', label: 'Vessels', icon: 'vessels', permission: 'vessel.view' },
     ],
   },
   {
     label: 'Administration',
     items: [
-      { href: '/admin/users', label: 'Users', permission: 'user.view' },
-      { href: '/admin/roles', label: 'Roles', permission: 'role.view' },
+      { href: '/admin/users', label: 'Users', icon: 'users', permission: 'user.view' },
+      { href: '/admin/roles', label: 'Roles', icon: 'roles', permission: 'role.view' },
       {
         href: '/admin/reference-data',
         label: 'Reference data',
+        icon: 'reference',
         permission: 'reference-data.manage',
       },
-      { href: '/admin/custom-fields', label: 'Custom fields', permission: 'custom-field.manage' },
-      { href: '/admin/audit', label: 'Audit log', permission: 'audit.view' },
+      {
+        href: '/admin/custom-fields',
+        label: 'Custom fields',
+        icon: 'fields',
+        permission: 'custom-field.manage',
+      },
+      { href: '/admin/audit', label: 'Audit log', icon: 'audit', permission: 'audit.view' },
     ],
   },
 ];

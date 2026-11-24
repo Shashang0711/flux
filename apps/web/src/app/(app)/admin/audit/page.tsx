@@ -39,10 +39,9 @@ export default async function AuditPage({
         description={`Every change to users, roles and ${session.tenant?.name ?? 'your organisation'}. Entries cannot be edited or deleted.`}
       />
       <div className="stack">
-        <form className="row" role="search">
+        <form className="toolbar" role="search">
           <select
             className="select"
-            style={{ maxWidth: 260 }}
             name="action"
             defaultValue={params.action ?? ''}
             aria-label="Action"
@@ -56,7 +55,6 @@ export default async function AuditPage({
           </select>
           <select
             className="select"
-            style={{ maxWidth: 200 }}
             name="entityType"
             defaultValue={params.entityType ?? ''}
             aria-label="Record type"

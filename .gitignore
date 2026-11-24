@@ -9,3 +9,8 @@ coverage/
 !.env.example
 *.log
 .DS_Store
+
+# Playwright
+apps/web/e2e/.auth/
+apps/web/e2e/.results/
+apps/web/e2e/.report/
