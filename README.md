@@ -125,6 +125,7 @@ renders the shell: a sidebar built from `lib/navigation.ts`, showing only what t
 | `/platform/tenants/...`    | Platform admins         | Tenants: list, create, modules, suspend                                               |
 | `/admin/users/...`         | `user.view`             | Users: list, create, roles, disable, reset                                            |
 | `/admin/roles/...`         | `role.view`             | Roles: tabs from the spec, clone                                                      |
+| `/admin/vessels/...`       | `vessel.view`           | Vessels: list, create (duplicate-IMO guidance), Overview, Audit                       |
 | `/admin/clients/...`       | `client.view`           | Clients: grid, create, Overview / Addresses / Contacts / Billing Parties / Audit tabs |
 | `/admin/reference-data`    | `reference-data.manage` | Hide FLUX defaults, add own items                                                     |
 | `/admin/custom-fields`     | `custom-field.manage`   | Define custom fields per record type                                                  |
@@ -169,6 +170,11 @@ USING (tenant_id = app_current_tenant()) WITH CHECK (tenant_id = app_current_ten
 4. if it references other tenant-owned rows, use a composite foreign key `(…_id, tenant_id)` to
    that table's `(id, tenant_id)`, so a row can never link records of two tenants;
 5. be accessed only through `TenantDb.run`, and get an isolation test.
+6. foreign keys and trigger checks run **outside** row-level security reasoning: an FK accepts a
+   guessed ID from another tenant, and a trigger running as `flux_app` cannot see other tenants'
+   rows. Use composite FKs with `tenant_id` where possible; a trigger that must verify other
+   tenant-owned rows has to be `SECURITY DEFINER` with `SET search_path` (see
+   `vessels_reference_scope`), or fail closed when it cannot see the row.
 
 **Modules.** The catalogue is `MODULES` in `@flux/shared`. Core modules are always available;
 optional ones are licensed per tenant by the platform admin. Guard endpoints with
@@ -236,6 +242,22 @@ Parts & Pricing.
 - Clients and billing parties are deactivated, never deleted (vessels and invoices will refer to
   them); addresses and contacts can be removed.
 - Every change, including sub-records, is audited on the client's history.
+
+## Vessels
+
+Vessel master records (module `vessels`, `vessel.view` / `vessel.manage`) follow §5 and §14 of the
+design pack. The vessel is independent of clients: client relationships and fleets attach to it
+(M7), so one physical ship is never duplicated per client.
+
+- **Vessel code** `VS-00001` per tenant (`nextSequence`, key `vessel`).
+- **IMO number** is optional, validated with the IMO check digit (`normaliseImoNumber`), stored as
+  7 digits and unique per tenant. A duplicate returns `409` with `details.existingVessel`, and the
+  form links to that vessel instead of creating a copy.
+- **Vessel type** and **classification society** are typed references to reference data:
+  composite FKs `(id, list_key)` with the list key pinned by a CHECK, plus a `SECURITY DEFINER`
+  trigger that rejects another tenant's items. New choices must be active and not hidden; a
+  vessel keeps a value that is hidden later.
+- Custom fields (entity `vessel`), deactivation instead of deletion, and a full audit trail.
 
 ## Custom fields
 
@@ -336,6 +358,10 @@ When adding a feature that changes data:
 | `GET /api/v1/clients/:id/billing-parties`               | `client.view`           | Billing Party Grid                                                      |
 | `POST /api/v1/clients/:id/billing-parties`              | `client.manage`         | Billing Party Add                                                       |
 | `PATCH /api/v1/clients/:id/billing-parties/:partyId`    | `client.manage`         | Edit, default, (de)activate                                             |
+| `GET /api/v1/vessels`                                   | `vessel.view`           | List (`q`: name, previous name, IMO, code; `status`; `vesselTypeId`)    |
+| `POST /api/v1/vessels`                                  | `vessel.manage`         | Create (code generated; IMO checked; `customFields`)                    |
+| `GET /api/v1/vessels/:id`                               | `vessel.view`           | Read with type and class society                                        |
+| `PATCH /api/v1/vessels/:id`                             | `vessel.manage`         | Update, (de)activate                                                    |
 | `GET /api/v1/custom-fields/entities`                    | Signed in (tenant)      | Record types available to the organisation                              |
 | `GET /api/v1/custom-fields?entity=client`               | Signed in (tenant)      | Field definitions (`view=all` includes inactive)                        |
 | `POST /api/v1/custom-fields`                            | `custom-field.manage`   | Define a field                                                          |

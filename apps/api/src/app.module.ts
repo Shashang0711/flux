@@ -13,6 +13,7 @@ import { PlatformModule } from './modules/platform/platform.module';
 import { ReferenceDataModule } from './modules/reference-data/reference-data.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { UsersModule } from './modules/users/users.module';
+import { VesselsModule } from './modules/vessels/vessels.module';
 
 export const REQUEST_ID_HEADER = 'x-request-id';
 
@@ -52,6 +53,7 @@ export const REQUEST_ID_HEADER = 'x-request-id';
     ReferenceDataModule,
     CustomFieldsModule,
     ClientsModule,
+    VesselsModule,
   ],
 })
 export class AppModule {}
