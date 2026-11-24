@@ -44,6 +44,7 @@ test.describe('tenant admin pages fit every screen', () => {
       'addresses',
       'contacts',
       'billing',
+      'notifications',
       'vessels',
       'fleets',
       'audit',
@@ -54,7 +55,7 @@ test.describe('tenant admin pages fit every screen', () => {
 
   test('vessel detail tabs', async ({ page }) => {
     const vessel = await firstRecordHref(page, '/admin/vessels');
-    for (const tab of ['overview', 'clients', 'audit'])
+    for (const tab of ['overview', 'clients', 'billing', 'contacts', 'notifications', 'audit'])
       await checkPage(page, `${vessel}?tab=${tab}`);
   });
 

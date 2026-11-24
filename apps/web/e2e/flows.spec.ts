@@ -72,3 +72,41 @@ test('edit dialogs fit the screen (a bottom sheet on phones)', async ({ page }) 
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
 });
+
+test('vessel overrides: billing party and a notification, then back to the client default', async ({
+  page,
+}) => {
+  await page.goto('/admin/vessels');
+  await page.getByRole('link', { name: 'Aegean Star' }).first().click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Aegean Star' })).toBeVisible();
+  const vesselUrl = page.url().split('?')[0]!;
+
+  await page.goto(`${vesselUrl}?tab=billing`);
+  await expect(page.getByText('Settings for')).toBeVisible();
+  const select = page.getByLabel('Invoice this vessel’s work to');
+  expect((await select.locator('option').allTextContents())[0]).toMatch(/^Client default/);
+  // Pin a party explicitly, then return to "Client default".
+  await select.selectOption({ index: 1 });
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.locator('main').getByText('Vessel override')).toBeVisible();
+  await select.selectOption({ index: 0 });
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.locator('main').getByText('Client default', { exact: true })).toBeVisible();
+
+  await page.goto(`${vesselUrl}?tab=notifications`);
+  const row = page.locator('main tbody tr').filter({ hasText: 'Sample delayed' });
+  await row.getByRole('button', { name: 'Override' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Sample delayed for this vessel' });
+  await dialog.getByLabel('On for this vessel').check();
+  await dialog.getByLabel('Choose recipients for this vessel').check();
+  await dialog.getByLabel('Other email addresses').fill('master@aegean-star.test');
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(dialog.getByText('Saved.')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(row).toContainText('Override');
+  await expect(row).toContainText('master@aegean-star.test');
+
+  await row.getByRole('button', { name: 'Reset' }).click();
+  await expect(row).toContainText('As client');
+  await expect(row.getByRole('button', { name: 'Override' })).toBeVisible();
+});

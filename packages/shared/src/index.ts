@@ -13,3 +13,5 @@ export * from './clients/clients';
 export * from './custom-fields/custom-fields';
 export * from './vessels/vessels';
 export * from './vessels/relationships';
+export * from './notifications/notifications';
+export * from './vessels/overrides';
