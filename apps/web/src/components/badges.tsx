@@ -17,7 +17,7 @@ export function Badge({
   tone = 'muted',
 }: {
   children: string;
-  tone?: 'brand' | 'muted' | 'ok' | 'warn';
+  tone?: 'brand' | 'muted' | 'ok' | 'warn' | 'bad';
 }) {
   return <span className={`badge badge-${tone}`}>{children}</span>;
 }

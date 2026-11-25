@@ -85,6 +85,7 @@ export const AUDIT_ACTIONS = {
   'receiving.kit_received': 'Kit received',
   'receiving.kit_updated': 'Received kit updated',
   'receiving.kit_cancelled': 'Received kit cancelled',
+  'sample.batch_registered': 'Batch registered',
   'fleet.created': 'Fleet created',
   'fleet.updated': 'Fleet updated',
   'fleet.activated': 'Fleet activated',
@@ -109,6 +110,8 @@ export const AUDIT_ENTITY_TYPES = [
   'product',
   'airway-bill',
   'received-kit',
+  'batch',
+  'sample',
 ] as const;
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
 

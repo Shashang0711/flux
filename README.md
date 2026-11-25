@@ -137,6 +137,9 @@ renders the shell: a sidebar built from `lib/navigation.ts`, showing only what t
 | `/admin/lab/bottles`             | `lab-setup.view`        | Bottle types                                                                                          |
 | `/lab/receiving/...`             | `receiving.view`        | Airway bills; receive kits one by one (scanner-friendly), edit, cancel                                |
 | `/lab/registration-queue`        | `receiving.view`        | Kits awaiting registration: all / vessel linked / unlinked                                            |
+| `/lab/batches/new?kits=…`        | `sample.register`       | Register batch: batch fields once, vessel/client and sample fields per kit                            |
+| `/lab/batches/...`               | `sample.view`           | Batches and their samples                                                                             |
+| `/lab/samples/...`               | `sample.view`           | Samples with status colour, kit, AWB and registration details                                         |
 | `/admin/audit`                   | `audit.view`            | Audit log with filters                                                                                |
 | `/platform/reference-data`       | Platform admins         | Manage FLUX default reference data                                                                    |
 | `/platform/audit`                | Platform admins         | Platform-level audit log                                                                              |
@@ -397,6 +400,29 @@ Receiving is a separate business event from registration.
 - Composite tenant FKs (a variant must belong to the kit's product), RLS, and an audit trail on the
   kit that also shows in the AWB's, vessel's and client's history.
 
+## Batch registration
+
+Design pack §8/§16/§20 (module Sample Management; `sample.view` / `sample.register`). Kits are
+selected in the registration queue and registered as a **batch** in one step.
+
+- A batch has **one service type** (its registration form); its kits may come from different
+  vessels and clients, and each sample keeps its own. **One kit becomes one sample.**
+- The form asks the service type's batch fields once and its sample fields per kit, and lets the
+  lab complete or change each kit's vessel and client. Every sample needs a **client**; a
+  **vessel** is required only for service types marked _Vessel required_ (Lab setup → service
+  type). All problems come back together, keyed `batch.<field>` / `samples.<n>.<field>`.
+- IDs are per organisation and **year**: batch `B26-00001`, sample `S26-000001` (gapless
+  sequences `batch:<year>` / `sample:<year>`).
+- **Atomic and race-safe:** one transaction validates, claims each kit with a conditional update
+  (`PENDING_REGISTRATION` → `REGISTERED`; a second user gets 409), creates the batch and samples,
+  and audits. `samples.received_kit_id` is unique, and a deferred trigger refuses a sample whose kit
+  is not registered.
+- A new sample is `REGISTERED` (🔴 on the Sample Update scale; the colour is computed by
+  `sampleColour()`, never stored). Testing, reports and publishing move it on in later
+  milestones.
+- Batch and sample values are stored as JSON by field key and shown with the service type's
+  field definitions (keys never change).
+
 ## Custom fields
 
 Tenants add their own fields to records (Admin → Custom fields, `custom-field.manage`). Record
@@ -526,6 +552,10 @@ When adding a feature that changes data:
 | `POST /api/v1/receiving/airway-bills/:id/kits`                                            | `receiving.receive`             | Receive a kit (AWB must be open)                                                                            |
 | `GET/PATCH /api/v1/receiving/kits/:id`, `POST /api/v1/receiving/kits/:id/cancel`          | `receiving.view` / `.receive`   | Complete, correct or cancel a pending kit                                                                   |
 | `GET /api/v1/receiving/registration-queue`                                                | `receiving.view`                | Pending kits; filters `link` (linked/unlinked), `serviceTypeId`, `clientId`, `airwayBillId`, `flagged`, `q` |
+| `GET /api/v1/samples/registration-draft?kitIds=a,b`                                       | `sample.register`               | Chosen kits, service types they share (with fields), clients and vessels                                    |
+| `POST /api/v1/samples/batches`                                                            | `sample.register`               | Register kits as a batch (one transaction; 409 if a kit was taken)                                          |
+| `GET /api/v1/samples/batches`, `GET /api/v1/samples/batches/:id`                          | `sample.view`                   | Batches (paginated) and one batch with samples                                                              |
+| `GET /api/v1/samples`, `GET /api/v1/samples/:id`                                          | `sample.view`                   | Samples (filters: `status`, `serviceTypeId`, `clientId`, `vesselId`, `batchId`, `q`)                        |
 | `GET /api/v1/clients/:id/vessels`                                                         | `vessel.view`                   | Vessels linked to a client                                                                                  |
 | `GET /api/v1/clients/:id/fleets`                                                          | `vessel.view`                   | A client’s fleets with current vessels                                                                      |
 | `POST /api/v1/fleets`, `PATCH /api/v1/fleets/:id`, `GET /api/v1/fleets/:id`               | `fleet.manage` / `vessel.view`  | Fleets                                                                                                      |

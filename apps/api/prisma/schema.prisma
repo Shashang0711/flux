@@ -74,6 +74,9 @@ model Tenant {
   airwayBills  AirwayBill[]
   receivedKits ReceivedKit[]
 
+  registrationBatches RegistrationBatch[]
+  samples             Sample[]
+
   @@map("tenants")
 }
 
@@ -117,6 +120,8 @@ model User {
 
   /// Target for composite foreign keys that pin child rows to the same tenant.
   receivedKits ReceivedKit[]
+
+  registeredBatches RegistrationBatch[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -389,6 +394,8 @@ model Client {
 
   receivedKits ReceivedKit[]
 
+  samples Sample[]
+
   @@unique([tenantId, code])
   @@unique([id, tenantId])
   @@index([tenantId, name])
@@ -554,6 +561,8 @@ model Vessel {
   relationships VesselClientRelationship[]
 
   receivedKits ReceivedKit[]
+
+  samples Sample[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, imoNumber])
@@ -858,16 +867,18 @@ model LabCategory {
 
 /// What is tested (e.g. Ballast Water). Defines the fields entered when registering samples.
 model ServiceType {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @map("tenant_id") @db.Uuid
-  categoryId  String   @map("category_id") @db.Uuid
-  code        String
-  name        String
-  description String?
-  sortOrder   Int      @default(0) @map("sort_order")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  categoryId     String   @map("category_id") @db.Uuid
+  code           String
+  name           String
+  description    String?
+  sortOrder      Int      @default(0) @map("sort_order")
+  isActive       Boolean  @default(true) @map("is_active")
+  /// Samples of this type need a vessel at registration.
+  vesselRequired Boolean  @default(false) @map("vessel_required")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   tenant   Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   category LabCategory          @relation(fields: [categoryId, tenantId], references: [id, tenantId], onDelete: Restrict)
@@ -875,6 +886,9 @@ model ServiceType {
   products ProductServiceType[]
 
   receivedKits ReceivedKit[]
+
+  batches RegistrationBatch[]
+  samples Sample[]
 
   @@unique([tenantId, code])
   @@unique([id, tenantId])
@@ -1099,6 +1113,8 @@ model ReceivedKit {
   vessel      Vessel?         @relation(fields: [vesselId, tenantId], references: [id, tenantId], onDelete: Restrict)
   receivedBy  User?           @relation(fields: [receivedById], references: [id], onDelete: SetNull)
 
+  samples Sample[]
+
   @@unique([tenantId, code])
   @@unique([id, tenantId])
   @@index([tenantId, status])
@@ -1106,4 +1122,72 @@ model ReceivedKit {
   @@index([vesselId])
   @@index([clientId])
   @@map("received_kits")
+}
+
+// ─── Batch registration (M11) ───────────────────────────────────────────────
+// Design pack §8/§16/§20: selected received kits become a batch (one service type) with one
+// sample per kit, in one transaction. Codes are per tenant and year: B26-00001, S26-000001.
+
+enum SampleStatus {
+  REGISTERED
+  UNDER_TESTING
+  RESULTS_ENTERED
+}
+
+model RegistrationBatch {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  code           String
+  serviceTypeId  String   @map("service_type_id") @db.Uuid
+  /// Values of the service type's batch fields, by field key.
+  values         Json     @default("{}")
+  notes          String?
+  registeredAt   DateTime @default(now()) @map("registered_at")
+  registeredById String?  @map("registered_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  serviceType  ServiceType @relation(fields: [serviceTypeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  registeredBy User?       @relation(fields: [registeredById], references: [id], onDelete: SetNull)
+  samples      Sample[]
+
+  @@unique([tenantId, code])
+  @@unique([id, tenantId])
+  /// Target for samples, pinning each sample to its batch's service type.
+  @@unique([id, serviceTypeId])
+  @@index([tenantId, registeredAt])
+  @@map("registration_batches")
+}
+
+model Sample {
+  id            String       @id @default(uuid()) @db.Uuid
+  tenantId      String       @map("tenant_id") @db.Uuid
+  code          String
+  batchId       String       @map("batch_id") @db.Uuid
+  serviceTypeId String       @map("service_type_id") @db.Uuid
+  /// One sample per received kit (also stops a kit being registered twice).
+  receivedKitId String       @unique @map("received_kit_id") @db.Uuid
+  clientId      String       @map("client_id") @db.Uuid
+  vesselId      String?      @map("vessel_id") @db.Uuid
+  /// Values of the service type's sample fields, by field key.
+  values        Json         @default("{}")
+  status        SampleStatus @default(REGISTERED)
+  registeredAt  DateTime     @default(now()) @map("registered_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  batch       RegistrationBatch @relation(fields: [batchId, serviceTypeId], references: [id, serviceTypeId], onDelete: Restrict, onUpdate: NoAction)
+  serviceType ServiceType       @relation(fields: [serviceTypeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  receivedKit ReceivedKit       @relation(fields: [receivedKitId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  client      Client            @relation(fields: [clientId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  vessel      Vessel?           @relation(fields: [vesselId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([tenantId, code])
+  @@index([batchId])
+  @@index([tenantId, status])
+  @@index([clientId])
+  @@index([vesselId])
+  @@map("samples")
 }

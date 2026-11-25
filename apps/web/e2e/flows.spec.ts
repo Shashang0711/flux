@@ -205,3 +205,64 @@ test('receive kits scanner-style, then find them in the registration queue', asy
   await expect(page.locator('main tbody tr')).toContainText(`${tag}-1`);
   await expect(page.locator('main tbody tr')).toContainText('Aegean Star');
 });
+
+test('register a batch from the registration queue', async ({ page }, info) => {
+  const tag = `R${info.project.name.slice(0, 1).toUpperCase()}${Date.now().toString(36).toUpperCase()}`;
+  // Two received ballast water kits on Aegean Star (set up through the API).
+  const api = page.request;
+  const options = (await (await api.get('/api/v1/receiving/options')).json()).data;
+  const bwk = options.kits.find((k: { code: string }) => k.code === 'BWK');
+  const vessel = options.vessels.find((v: { name: string }) => v.name === 'Aegean Star');
+  const awb = (
+    await (await api.post('/api/v1/receiving/airway-bills', { data: { number: tag } })).json()
+  ).data;
+  for (const n of [1, 2]) {
+    const res = await api.post(`/api/v1/receiving/airway-bills/${awb.id}/kits`, {
+      data: {
+        productId: bwk.id,
+        variantId: bwk.variants[0].id,
+        serialNumber: `${tag}-${n}`,
+        vesselId: vessel.id,
+      },
+    });
+    expect(res.ok()).toBe(true);
+  }
+
+  await page.goto(`/lab/registration-queue?q=${tag}`);
+  const rows = page.locator('main tbody tr');
+  await expect(rows).toHaveCount(2);
+  for (const n of [1, 2])
+    await rows
+      .nth(n - 1)
+      .getByRole('checkbox')
+      .check();
+  await expect(page.getByText('2 kits selected')).toBeVisible();
+  await page.getByRole('link', { name: 'Register batch' }).click();
+
+  await expect(page.getByRole('heading', { level: 1, name: 'Register batch' })).toBeVisible();
+  await page.getByLabel('Port of sampling').fill('Singapore');
+  for (const i of [0, 1]) {
+    const card = page.getByRole('region', { name: new RegExp(`^Sample ${i + 1}:`) });
+    await expect(card.getByLabel('Vessel *')).toHaveValue(vessel.id);
+    await card.getByLabel('Sampling point *').selectOption({ label: 'Intake' });
+  }
+  // Missing dates are reported on the right sample before anything is saved.
+  await page.getByRole('button', { name: 'Register 2 samples' }).click();
+  await expect(page.getByText('Date sampled is required').first()).toBeVisible();
+  for (const i of [0, 1]) {
+    await page
+      .getByRole('region', { name: new RegExp(`^Sample ${i + 1}:`) })
+      .getByLabel('Date sampled *')
+      .fill('2026-11-21');
+  }
+  await page.getByRole('button', { name: 'Register 2 samples' }).click();
+
+  await expect(page.getByRole('heading', { level: 1, name: /^Batch B\d{2}-\d{5}$/ })).toBeVisible();
+  const samples = page.getByRole('table', { name: 'Samples' }).locator('tbody tr');
+  await expect(samples).toHaveCount(2);
+  await expect(samples.first()).toContainText('Registered');
+  await expect(page.getByText('Singapore')).toBeVisible();
+
+  await page.goto(`/lab/registration-queue?q=${tag}`);
+  await expect(page.getByText('No kits are waiting for registration.')).toBeVisible();
+});

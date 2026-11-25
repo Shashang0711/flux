@@ -468,12 +468,18 @@ export function KitTable({
   canReceive,
   showAirwayBill = false,
   empty,
+  selection,
+  hideStatus = false,
 }: {
   kits: ReceivedKitDto[];
   options: ReceivingOptionsDto | null;
   canReceive: boolean;
   showAirwayBill?: boolean;
   empty: string;
+  /** Adds a checkbox per kit (registration queue). */
+  selection?: { selected: ReadonlySet<string>; toggle: (id: string) => void };
+  /** The queue shows only pending kits: what is missing goes under the links instead. */
+  hideStatus?: boolean;
 }) {
   return (
     <DataTable
@@ -483,6 +489,22 @@ export function KitTable({
       empty={empty}
       rowClassName={(k) => (k.status === 'CANCELLED' ? 'row-muted' : undefined)}
       columns={[
+        ...(selection
+          ? [
+              {
+                header: 'Select',
+                cell: (k: ReceivedKitDto) => (
+                  <input
+                    type="checkbox"
+                    className="row-check"
+                    aria-label={`Select ${k.code}`}
+                    checked={selection.selected.has(k.id)}
+                    onChange={() => selection.toggle(k.id)}
+                  />
+                ),
+              },
+            ]
+          : []),
         {
           header: 'Kit ID',
           primary: true,
@@ -514,15 +536,23 @@ export function KitTable({
         },
         {
           header: 'Vessel / client',
-          cell: (k) =>
-            k.vessel || k.client ? (
-              <>
-                {k.vessel?.name ?? <span className="muted">No vessel</span>}
-                {k.client && <span className="cell-sub">{k.client.name}</span>}
-              </>
-            ) : (
-              <Badge>Unlinked</Badge>
-            ),
+          cell: (k) => (
+            <>
+              {k.vessel || k.client ? (
+                <>
+                  {k.vessel?.name ?? <span className="muted">No vessel</span>}
+                  {k.client && <span className="cell-sub">{k.client.name}</span>}
+                </>
+              ) : (
+                <Badge>Unlinked</Badge>
+              )}
+              {hideStatus && k.missing.length > 0 && (
+                <span className="cell-sub">
+                  Missing: {k.missing.map((m) => MISSING[m]).join(', ')}
+                </span>
+              )}
+            </>
+          ),
         },
         {
           header: 'Condition',
@@ -533,7 +563,9 @@ export function KitTable({
             </>
           ),
         },
-        { header: 'Status', cell: (k) => <StatusCell kit={k} /> },
+        ...(hideStatus
+          ? []
+          : [{ header: 'Status', cell: (k: ReceivedKitDto) => <StatusCell kit={k} /> }]),
         ...(canReceive && options
           ? [
               {

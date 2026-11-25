@@ -24,6 +24,8 @@ const PATHS = {
   kit: 'M3 7l9-4 9 4v10l-9 4-9-4V7zM3 7l9 4 9-4M12 11v10',
   inbox: 'M3 13h5l1.5 3h5L16 13h5M5.5 5h13L21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6l2.5-8z',
   queue: 'M4 6h16M4 12h10M4 18h7M18 15v6M15 18h6',
+  batch: 'M4 7h16v4H4zM6 11v9h12v-9M10 15h4',
+  sample: 'M9 2h6M10 2v7l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V2',
   bottle: 'M10 2h4v3l2 3v12a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V8l2-3V2zM8 12h8',
 } as const;
 
