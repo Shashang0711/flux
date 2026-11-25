@@ -48,6 +48,15 @@ describe('visibleNavigation', () => {
     ]);
   });
 
+  it('shows an item that needs several permissions only when all are held', () => {
+    expect(labels(session({ permissions: ['sample.register'] }))).not.toContain(
+      'Receive & register',
+    );
+    expect(labels(session({ permissions: ['receiving.receive', 'sample.register'] }))).toContain(
+      'Receive & register',
+    );
+  });
+
   it('drops empty groups', () => {
     expect(visibleNavigation(session({})).map((g) => g.label)).toEqual(['Overview']);
   });

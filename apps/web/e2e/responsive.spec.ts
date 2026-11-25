@@ -40,6 +40,7 @@ test.describe('tenant admin pages fit every screen', () => {
     '/lab/receiving/new',
     '/lab/registration-queue',
     '/lab/registration-queue?link=unlinked',
+    '/lab/receive-register',
     '/lab/batches',
     '/lab/batches/new',
     '/lab/samples',

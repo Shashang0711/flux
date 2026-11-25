@@ -179,28 +179,39 @@ export class ReceivingService {
     actor: AuthUser,
   ): Promise<AirwayBillDto> {
     return this.db.run(ctx.tenantId, async (tx) => {
-      const created = await this.uniqueNumber(() =>
-        tx.airwayBill.create({
-          data: {
-            tenantId: ctx.tenantId,
-            number: input.number,
-            courier: input.courier ?? null,
-            origin: input.origin ?? null,
-            receivedOn: toDate(input.receivedOn ?? today()),
-            notes: input.notes ?? null,
-          },
-        }),
-      );
-      await this.auditAwb(
-        tx,
-        ctx,
-        actor,
-        created,
-        'receiving.awb_created',
-        fieldChanges(null, created, AWB_FIELDS),
-      );
+      const created = await this.createAirwayBillInTx(tx, ctx, input, actor);
       return this.airwayBill(tx, created.id);
     });
+  }
+
+  /** Creates and audits an AWB in the caller's transaction (also used by Receive & Register). */
+  async createAirwayBillInTx(
+    tx: TenantTx,
+    ctx: TenantContext,
+    input: Out<typeof createAirwayBillSchema>,
+    actor: AuthUser,
+  ) {
+    const created = await this.uniqueNumber(() =>
+      tx.airwayBill.create({
+        data: {
+          tenantId: ctx.tenantId,
+          number: input.number,
+          courier: input.courier ?? null,
+          origin: input.origin ?? null,
+          receivedOn: toDate(input.receivedOn ?? today()),
+          notes: input.notes ?? null,
+        },
+      }),
+    );
+    await this.auditAwb(
+      tx,
+      ctx,
+      actor,
+      created,
+      'receiving.awb_created',
+      fieldChanges(null, created, AWB_FIELDS),
+    );
+    return created;
   }
 
   updateAirwayBill(
@@ -269,38 +280,49 @@ export class ReceivingService {
     input: Out<typeof receiveKitSchema>,
     actor: AuthUser,
   ): Promise<ReceivedKitDto> {
-    return this.db.run(ctx.tenantId, async (tx) => {
-      const awb = await this.findAwb(tx, airwayBillId);
-      if (awb.status !== 'OPEN') {
-        throw AppException.badRequest('This airway bill is closed; reopen it to receive more kits');
-      }
-      const links = await this.resolveLinks(tx, actor, input, null);
-      const code = formatReceivedKitCode(await nextSequence(tx, ctx.tenantId, 'received-kit'));
-      const kit = await this.uniqueSerial(tx, input.serialNumber, () =>
-        tx.receivedKit.create({
-          data: {
-            tenantId: ctx.tenantId,
-            code,
-            airwayBillId,
-            ...links,
-            serialNumber: input.serialNumber ?? null,
-            condition: input.condition,
-            conditionNotes: input.conditionNotes ?? null,
-            receivedById: actor.id,
-          },
-          include: KIT_INCLUDE,
-        }),
-      );
-      await this.auditKit(
-        tx,
-        ctx,
-        actor,
-        kit,
-        'receiving.kit_received',
-        fieldChanges(null, kitAuditValues(kit), KIT_AUDIT_FIELDS),
-      );
-      return toKitDto(kit);
-    });
+    return this.db.run(ctx.tenantId, async (tx) =>
+      toKitDto(await this.receiveKitInTx(tx, ctx, airwayBillId, input, actor)),
+    );
+  }
+
+  /** Receives and audits one kit in the caller's transaction (also used by Receive & Register). */
+  async receiveKitInTx(
+    tx: TenantTx,
+    ctx: TenantContext,
+    airwayBillId: string,
+    input: Out<typeof receiveKitSchema>,
+    actor: AuthUser,
+  ): Promise<KitRow> {
+    const awb = await this.findAwb(tx, airwayBillId);
+    if (awb.status !== 'OPEN') {
+      throw AppException.badRequest('This airway bill is closed; reopen it to receive more kits');
+    }
+    const links = await this.resolveLinks(tx, actor, input, null);
+    const code = formatReceivedKitCode(await nextSequence(tx, ctx.tenantId, 'received-kit'));
+    const kit = await this.uniqueSerial(tx, input.serialNumber, () =>
+      tx.receivedKit.create({
+        data: {
+          tenantId: ctx.tenantId,
+          code,
+          airwayBillId,
+          ...links,
+          serialNumber: input.serialNumber ?? null,
+          condition: input.condition,
+          conditionNotes: input.conditionNotes ?? null,
+          receivedById: actor.id,
+        },
+        include: KIT_INCLUDE,
+      }),
+    );
+    await this.auditKit(
+      tx,
+      ctx,
+      actor,
+      kit,
+      'receiving.kit_received',
+      fieldChanges(null, kitAuditValues(kit), KIT_AUDIT_FIELDS),
+    );
+    return kit;
   }
 
   getKit(ctx: TenantContext, id: string): Promise<ReceivedKitDto> {
@@ -424,6 +446,22 @@ export class ReceivingService {
       ]);
       return new Paginated(rows.map(toKitDto), total, page);
     });
+  }
+
+  // ─── Checks for Receive & Register ────────────────────────────────────────
+
+  /** Validates a new kit's type and links without saving; throws a field error (unprefixed). */
+  checkKitInTx(tx: TenantTx, user: AuthUser, input: KitInput) {
+    return this.resolveLinks(tx, user, input, null);
+  }
+
+  /** The ID of the live kit that already has this serial, if any. */
+  async serialTakenInTx(tx: TenantTx, serial: string): Promise<string | null> {
+    const kit = await tx.receivedKit.findFirst({
+      where: { serialNumber: serial, status: { not: 'CANCELLED' } },
+      select: { code: true },
+    });
+    return kit?.code ?? null;
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────

@@ -1,12 +1,14 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import {
   batchListQuerySchema,
+  receiveAndRegisterSchema,
   registerBatchSchema,
   registrationDraftQuerySchema,
   sampleListQuerySchema,
   type BatchDto,
   type BatchSummaryDto,
   type PageQuery,
+  type ReceiveRegisterOptionsDto,
   type RegistrationDraftDto,
   type SampleDto,
   type SampleListQuery,
@@ -51,6 +53,27 @@ export class SamplesController {
     @Body(new ZodValidationPipe(registerBatchSchema)) input: Out<typeof registerBatchSchema>,
   ): Promise<BatchDto> {
     return this.samples.register(t, u, input);
+  }
+
+  @Get('receive-register-options')
+  @RequirePermission('sample.register', 'receiving.receive')
+  receiveRegisterOptions(
+    @CurrentTenant() t: TenantContext,
+    @CurrentUser() u: AuthUser,
+  ): Promise<ReceiveRegisterOptionsDto> {
+    return this.samples.receiveRegisterOptions(t, u);
+  }
+
+  /** Receive & Register: receive a package's kits and register them as one batch, atomically. */
+  @Post('receive-and-register')
+  @RequirePermission('sample.register', 'receiving.receive')
+  receiveAndRegister(
+    @CurrentTenant() t: TenantContext,
+    @CurrentUser() u: AuthUser,
+    @Body(new ZodValidationPipe(receiveAndRegisterSchema))
+    input: Out<typeof receiveAndRegisterSchema>,
+  ): Promise<BatchDto> {
+    return this.samples.receiveAndRegister(t, u, input);
   }
 
   @Get('batches')
