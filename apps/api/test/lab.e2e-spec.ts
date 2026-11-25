@@ -83,7 +83,7 @@ describe('Laboratory master data (e2e)', () => {
   describe('starter catalogue', () => {
     it('imports categories, service types with fields, bottles and kits', async () => {
       expect(await importStarter()).toEqual({
-        created: { categories: 3, serviceTypes: 5, bottleTypes: 4, products: 4 },
+        created: { categories: 3, serviceTypes: 5, parameters: 20, bottleTypes: 4, products: 4 },
         skipped: 0,
       });
       const bw = await serviceType('BW');
@@ -121,8 +121,8 @@ describe('Laboratory master data (e2e)', () => {
         .patch(`${L}/service-types/${bw.id}`, { name: 'Ballast Water (D-2)' })
         .expect(200);
       expect(await importStarter()).toEqual({
-        created: { categories: 0, serviceTypes: 0, bottleTypes: 0, products: 0 },
-        skipped: 16,
+        created: { categories: 0, serviceTypes: 0, parameters: 0, bottleTypes: 0, products: 0 },
+        skipped: 36,
       });
       expect((await serviceType('BW')).name).toBe('Ballast Water (D-2)');
       expect(await prisma.auditLog.count({ where: { action: 'lab.starter_imported' } })).toBe(1);

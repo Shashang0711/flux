@@ -11,6 +11,7 @@ import { readParams } from '@/components/pagination';
 import { loadOrNotFound, sessionWithPermission } from '@/lib/server-api';
 import { ServiceTypeForm } from '../../catalogue-forms';
 import { RegistrationFields, RegistrationPreview } from '../../field-forms';
+import { Parameters } from '../../parameter-forms';
 
 export const metadata: Metadata = { title: 'Service type · FLUX' };
 
@@ -29,6 +30,7 @@ export default async function ServiceTypePage({
   const tabs = [
     { key: 'general', name: 'General' },
     { key: 'fields', name: 'Registration fields' },
+    { key: 'parameters', name: 'Parameters' },
     { key: 'preview', name: 'Preview' },
     { key: 'kits', name: 'Kits' },
     ...(permissions.includes('audit.view') ? [{ key: 'audit', name: 'Audit' }] : []),
@@ -62,6 +64,7 @@ export default async function ServiceTypePage({
         </section>
       )}
       {tab === 'fields' && <RegistrationFields serviceType={st} canManage={canManage} />}
+      {tab === 'parameters' && <Parameters serviceType={st} canManage={canManage} />}
       {tab === 'preview' && <RegistrationPreview serviceType={st} />}
       {tab === 'kits' && (
         <div className="stack">

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { CustomFieldValues } from '../custom-fields/custom-fields';
 import type { RegistrationFieldDto } from '../lab/lab';
+import type { ResultFlag } from '../testing/testing';
 import {
   createAirwayBillSchema,
   receiveKitSchema,
@@ -56,6 +57,8 @@ export interface BatchSummaryDto {
   code: string;
   serviceType: Ref;
   sampleCount: number;
+  /** Samples per status (testing progress). */
+  statusCounts: Record<SampleStatus, number>;
   registeredAt: string;
   registeredBy: string | null;
 }
@@ -66,6 +69,8 @@ export interface SampleSummaryDto {
   code: string;
   status: SampleStatus;
   colour: SampleColour;
+  /** Worst result flag so far (null: no flagged results). */
+  worstFlag: ResultFlag | null;
   batch: { id: string; code: string };
   serviceType: Ref;
   client: Ref;
@@ -155,6 +160,8 @@ export const registrationDraftQuerySchema = z.object({
 
 export const batchListQuerySchema = z.object({
   serviceTypeId: z.uuid().optional(),
+  /** Only batches with samples whose results are not complete. */
+  open: z.enum(['true']).optional(),
   q: z.string().trim().max(100).optional(),
 });
 
@@ -164,6 +171,8 @@ export const sampleListQuerySchema = z.object({
   clientId: z.uuid().optional(),
   vesselId: z.uuid().optional(),
   batchId: z.uuid().optional(),
+  /** Only samples still being worked on (registered or under testing). */
+  open: z.enum(['true']).optional(),
   q: z.string().trim().max(100).optional(),
 });
 export type SampleListQuery = z.output<typeof sampleListQuerySchema>;

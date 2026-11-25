@@ -41,6 +41,8 @@ test.describe('tenant admin pages fit every screen', () => {
     '/lab/registration-queue',
     '/lab/registration-queue?link=unlinked',
     '/lab/receive-register',
+    '/lab/testing',
+    '/lab/testing?view=samples',
     '/lab/batches',
     '/lab/batches/new',
     '/lab/samples',
@@ -75,7 +77,7 @@ test.describe('tenant admin pages fit every screen', () => {
 
   test('lab service type and kit detail tabs', async ({ page }) => {
     const st = await firstRecordHref(page, '/admin/lab/service-types');
-    for (const tab of ['general', 'fields', 'preview', 'kits', 'audit']) {
+    for (const tab of ['general', 'fields', 'parameters', 'preview', 'kits', 'audit']) {
       await checkPage(page, `${st}?tab=${tab}`);
     }
     const kit = await firstRecordHref(page, '/admin/lab/kits');
@@ -85,7 +87,9 @@ test.describe('tenant admin pages fit every screen', () => {
   });
 
   test('batch and sample detail', async ({ page }) => {
-    await checkPage(page, await firstRecordHref(page, '/lab/batches'));
+    const batch = await firstRecordHref(page, '/lab/batches');
+    await checkPage(page, batch);
+    await checkPage(page, `${batch}/results`);
     await checkPage(page, await firstRecordHref(page, '/lab/samples'));
   });
 

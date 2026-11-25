@@ -366,6 +366,9 @@ export class SamplesService {
       const where: Prisma.RegistrationBatchWhereInput = {
         ...(query.serviceTypeId ? { serviceTypeId: query.serviceTypeId } : {}),
         ...(query.q ? { code: { contains: query.q, mode: 'insensitive' } } : {}),
+        ...(query.open
+          ? { samples: { some: { status: { in: ['REGISTERED', 'UNDER_TESTING'] } } } }
+          : {}),
       };
       const [rows, total] = await Promise.all([
         tx.registrationBatch.findMany({
@@ -392,6 +395,7 @@ export class SamplesService {
     return this.db.run(ctx.tenantId, async (tx) => {
       const where: Prisma.SampleWhereInput = {
         ...(query.status ? { status: query.status } : {}),
+        ...(query.open ? { status: { in: ['REGISTERED', 'UNDER_TESTING'] } } : {}),
         ...(query.serviceTypeId ? { serviceTypeId: query.serviceTypeId } : {}),
         ...(query.clientId ? { clientId: query.clientId } : {}),
         ...(query.vesselId ? { vesselId: query.vesselId } : {}),

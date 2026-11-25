@@ -141,6 +141,8 @@ renders the shell: a sidebar built from `lib/navigation.ts`, showing only what t
 | `/lab/batches/new?kits=…`        | `sample.register`                       | Register batch: batch fields once, vessel/client and sample fields per kit                            |
 | `/lab/batches/...`               | `sample.view`                           | Batches and their samples                                                                             |
 | `/lab/samples/...`               | `sample.view`                           | Samples with status colour, kit, AWB and registration details                                         |
+| `/lab/testing`                   | `sample.view`                           | Under testing: Batch view and Sample view of open work                                                |
+| `/lab/batches/:id/results`       | `sample.view` (`sample.test` to edit)   | Results grid, CSV template download and upload with preview                                           |
 | `/admin/audit`                   | `audit.view`                            | Audit log with filters                                                                                |
 | `/platform/reference-data`       | Platform admins                         | Manage FLUX default reference data                                                                    |
 | `/platform/audit`                | Platform admins                         | Platform-level audit log                                                                              |
@@ -436,6 +438,36 @@ values — and reported together (`samples.<n>.<field>`); nothing is saved unles
 result is the same as receiving then registering: an AWB, received kits (now registered), a batch
 and its samples, with the same audit entries.
 
+## Testing and results
+
+Design pack §8 Under Testing (module Sample Management; `sample.view` / `sample.test`).
+
+- **Test parameters** are defined per service type (Lab setup → service type → Parameters):
+  name, unit, type (number, text, pass/fail, choice), decimals, method, order, required. Key and
+  type never change. The starter catalogue adds typical parameters (ballast water per IMO D-2,
+  lube oil, fuel oil, potable and grey water); importing it again adds missing parameters to
+  existing service types.
+- **Limits** (numbers): caution and critical min/max bound the acceptable range. Results are
+  flagged **Normal / Caution / Critical** when saved (a failed pass/fail is Critical); each sample
+  shows its worst flag. Ranges are checked in the API and by a CHECK constraint (caution inside
+  critical, min ≤ max, limits only on numbers).
+- **Results** are one value per sample and parameter (`sample_results`; composite FKs pin the
+  parameter to the sample's service type and tenant). Values are parsed and flagged by the shared
+  `parseResultValue` / `flagFor`, so the browser preview and the API agree. A cleared value
+  deletes the result.
+- **States:** saving a result moves a sample `REGISTERED → UNDER_TESTING` (a batch can also be
+  started explicitly); **Complete results** needs every required active parameter and moves it to
+  `RESULTS_ENTERED`, locking the results until **reopened**. Every change is audited with
+  before/after values.
+- **Views:** _Under testing_ has the **Batch view** (open batches with progress → results grid)
+  and the **Sample view** (open samples with status and worst flag); each sample page has a
+  Results section.
+- **CSV upload** ("uploading batch-view results"): download the batch template (`sample`, `kit`,
+  `serial`, `vessel`, then parameter keys, pre-filled with current values), fill it in, upload.
+  It is matched by sample ID and sent with `?dryRun=true`: the server saves inside a transaction,
+  reads the result back and rolls back, so the preview shows exactly what saving would. Saving is
+  all or nothing; errors come back as `samples.<n>.<parameter key>`.
+
 ## Custom fields
 
 Tenants add their own fields to records (Admin → Custom fields, `custom-field.manage`). Record
@@ -571,6 +603,11 @@ When adding a feature that changes data:
 | `POST /api/v1/samples/receive-and-register`                                               | `receiving.receive` + `sample.register` | Receive & Register in one transaction                                                                       |
 | `GET /api/v1/samples/batches`, `GET /api/v1/samples/batches/:id`                          | `sample.view`                           | Batches (paginated) and one batch with samples                                                              |
 | `GET /api/v1/samples`, `GET /api/v1/samples/:id`                                          | `sample.view`                           | Samples (filters: `status`, `serviceTypeId`, `clientId`, `vesselId`, `batchId`, `q`)                        |
+| `POST /api/v1/lab/service-types/:id/parameters`, `PATCH /api/v1/lab/parameters/:id`       | `lab-setup.manage`                      | Test parameters                                                                                             |
+| `GET/PUT /api/v1/samples/:id/results`                                                     | `sample.view` / `sample.test`           | One sample's results (PUT: `{results: [{parameterId, value}]}`)                                             |
+| `POST /api/v1/samples/:id/complete-results`, `/reopen-results`                            | `sample.test`                           | Complete (lock) or reopen a sample's results                                                                |
+| `GET/PUT /api/v1/samples/batches/:id/results`                                             | `sample.view` / `sample.test`           | Batch grid; PUT `?dryRun=true` previews without saving                                                      |
+| `POST /api/v1/samples/batches/:id/start-testing`, `/complete-results`                     | `sample.test`                           | Start testing a batch; complete all its samples                                                             |
 | `GET /api/v1/clients/:id/vessels`                                                         | `vessel.view`                           | Vessels linked to a client                                                                                  |
 | `GET /api/v1/clients/:id/fleets`                                                          | `vessel.view`                           | A client’s fleets with current vessels                                                                      |
 | `POST /api/v1/fleets`, `PATCH /api/v1/fleets/:id`, `GET /api/v1/fleets/:id`               | `fleet.manage` / `vessel.view`          | Fleets                                                                                                      |

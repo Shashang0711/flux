@@ -12,6 +12,8 @@ import {
 import {
   bottleLinesSchema,
   createBottleTypeSchema,
+  createParameterSchema,
+  updateParameterSchema,
   createLabCategorySchema,
   createProductSchema,
   createRegistrationFieldSchema,
@@ -159,6 +161,28 @@ export class LabController {
     @body(registrationCheckSchema) input: Out<typeof registrationCheckSchema>,
   ): Promise<RegistrationCheckResultDto> {
     return this.catalogue.checkRegistration(t, id, input);
+  }
+
+  @Post('service-types/:id/parameters')
+  @RequirePermission('lab-setup.manage')
+  addParameter(
+    @CurrentTenant() t: TenantContext,
+    @CurrentUser() u: AuthUser,
+    @uuid() id: string,
+    @body(createParameterSchema) input: Out<typeof createParameterSchema>,
+  ): Promise<ServiceTypeDto> {
+    return this.catalogue.addParameter(t, id, input, u);
+  }
+
+  @Patch('parameters/:id')
+  @RequirePermission('lab-setup.manage')
+  updateParameter(
+    @CurrentTenant() t: TenantContext,
+    @CurrentUser() u: AuthUser,
+    @uuid() id: string,
+    @body(updateParameterSchema) input: Out<typeof updateParameterSchema>,
+  ): Promise<ServiceTypeDto> {
+    return this.catalogue.updateParameter(t, id, input, u);
   }
 
   // ─── Bottle types ─────────────────────────────────────────────────────────

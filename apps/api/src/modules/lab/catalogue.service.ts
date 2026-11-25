@@ -3,6 +3,10 @@ import type { Prisma } from '@prisma/client';
 import {
   ErrorCode,
   MAX_REGISTRATION_FIELDS,
+  customFieldKeyFromLabel,
+  limitIssues,
+  type createParameterSchema,
+  type updateParameterSchema,
   validateCustomFieldValues,
   type LabCategoryDto,
   type LabListQuery,
@@ -44,6 +48,20 @@ const SERVICE_TYPE_FIELDS = [
   'vesselRequired',
 ] as const;
 const FIELD_FIELDS = ['label', 'required', 'helpText', 'sortOrder', 'isActive'] as const;
+const PARAMETER_FIELDS = [
+  'name',
+  'unit',
+  'type',
+  'decimals',
+  'method',
+  'cautionMin',
+  'cautionMax',
+  'criticalMin',
+  'criticalMax',
+  'required',
+  'sortOrder',
+  'isActive',
+] as const;
 
 type Out<T extends z.ZodType> = z.output<T>;
 
@@ -359,6 +377,122 @@ export class CatalogueService {
       });
       if (!st) throw AppException.notFound('Service type', serviceTypeId);
       return validateRegistration(st.fields.map(toFieldDto), input);
+    });
+  }
+
+  // ─── Test parameters ──────────────────────────────────────────────────────
+
+  addParameter(
+    ctx: TenantContext,
+    serviceTypeId: string,
+    input: Out<typeof createParameterSchema>,
+    actor: AuthUser,
+  ): Promise<ServiceTypeDto> {
+    return this.db.run(ctx.tenantId, async (tx) => {
+      const st = await tx.serviceType.findUnique({ where: { id: serviceTypeId } });
+      if (!st) throw AppException.notFound('Service type', serviceTypeId);
+      if ((await tx.testParameter.count({ where: { serviceTypeId } })) >= 50) {
+        throw AppException.badRequest('At most 50 test parameters per service type');
+      }
+      const created = await uniqueCode(
+        () =>
+          tx.testParameter.create({
+            data: {
+              tenantId: ctx.tenantId,
+              serviceTypeId,
+              key: input.key ?? customFieldKeyFromLabel(input.name),
+              name: input.name,
+              unit: input.unit ?? null,
+              type: input.type,
+              decimals: input.type === 'NUMBER' ? (input.decimals ?? null) : null,
+              method: input.method ?? null,
+              options: input.type === 'CHOICE' ? (input.options ?? []) : [],
+              cautionMin: input.cautionMin ?? null,
+              cautionMax: input.cautionMax ?? null,
+              criticalMin: input.criticalMin ?? null,
+              criticalMax: input.criticalMax ?? null,
+              required: input.required ?? false,
+              sortOrder: input.sortOrder ?? 0,
+            },
+          }),
+        'A parameter with this key already exists; change the name or give it another key',
+        'name',
+      );
+      await labAudit(
+        tx,
+        ctx,
+        actor,
+        'lab.parameter_added',
+        { type: 'service-type', id: st.id, label: label(st) },
+        fieldChanges(null, created, PARAMETER_FIELDS),
+        [created.id],
+      );
+      return this.serviceTypeDetail(tx, serviceTypeId);
+    });
+  }
+
+  updateParameter(
+    ctx: TenantContext,
+    id: string,
+    input: Out<typeof updateParameterSchema>,
+    actor: AuthUser,
+  ): Promise<ServiceTypeDto> {
+    return this.db.run(ctx.tenantId, async (tx) => {
+      const before = await tx.testParameter.findUnique({
+        where: { id },
+        include: { serviceType: true },
+      });
+      if (!before) throw AppException.notFound('Test parameter', id);
+      const { serviceType, ...current } = before;
+      const merged = { ...current, ...input };
+      const issues = limitIssues(merged);
+      const hasLimits = [
+        merged.cautionMin,
+        merged.cautionMax,
+        merged.criticalMin,
+        merged.criticalMax,
+      ].some((l) => l !== null && l !== undefined);
+      if (before.type !== 'NUMBER' && hasLimits) {
+        issues.push({ path: 'criticalMax', message: 'Only number parameters have limits' });
+      }
+      if (input.options !== undefined) {
+        if (before.type !== 'CHOICE' && input.options.length > 0) {
+          issues.push({ path: 'options', message: 'Only choice parameters have choices' });
+        }
+        if (before.type === 'CHOICE' && input.options.length === 0) {
+          issues.push({ path: 'options', message: 'Add at least one choice' });
+        }
+      }
+      if (input.decimals !== undefined && before.type !== 'NUMBER' && input.decimals !== null) {
+        issues.push({ path: 'decimals', message: 'Only number parameters have decimals' });
+      }
+      if (issues.length > 0) {
+        throw new AppException(
+          HttpStatus.BAD_REQUEST,
+          ErrorCode.VALIDATION_ERROR,
+          'Request validation failed',
+          issues,
+        );
+      }
+      const after = await tx.testParameter.update({ where: { id }, data: input });
+      const changes = {
+        ...fieldChanges(before, after, PARAMETER_FIELDS),
+        ...(JSON.stringify(before.options) !== JSON.stringify(after.options)
+          ? { options: { from: before.options, to: after.options } }
+          : {}),
+      };
+      if (Object.keys(changes).length > 0) {
+        await labAudit(
+          tx,
+          ctx,
+          actor,
+          'lab.parameter_updated',
+          { type: 'service-type', id: serviceType.id, label: label(serviceType) },
+          { parameter: { from: null, to: after.name }, ...changes },
+          [id],
+        );
+      }
+      return this.serviceTypeDetail(tx, before.serviceTypeId);
     });
   }
 

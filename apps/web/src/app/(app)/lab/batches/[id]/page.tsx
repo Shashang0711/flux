@@ -6,6 +6,7 @@ import { DataTable } from '@/components/data-table';
 import { FieldValues, fieldSummary } from '@/components/field-values';
 import { Forbidden } from '@/components/forbidden';
 import { PageHeader } from '@/components/page-header';
+import { FlagBadge } from '@/components/results';
 import { SampleStatusBadge } from '@/components/sample-status';
 import { loadOrNotFound, sessionWithPermission } from '@/lib/server-api';
 
@@ -43,6 +44,11 @@ export default async function BatchPage({ params }: { params: Promise<{ id: stri
           </span>
         }
         back={{ href: '/lab/batches', label: 'Batches' }}
+        actions={
+          <Link className="btn btn-primary" href={`/lab/batches/${batch.id}/results`}>
+            Results
+          </Link>
+        }
       />
       <div className="stack">
         {(batchFields.length > 0 || batch.notes) && (
@@ -87,6 +93,7 @@ export default async function BatchPage({ params }: { params: Promise<{ id: stri
               header: 'Status',
               cell: (s) => <SampleStatusBadge status={s.status} colour={s.colour} />,
             },
+            { header: 'Flag', cell: (s) => <FlagBadge flag={s.worstFlag} /> },
           ]}
         />
         {history && (

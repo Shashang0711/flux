@@ -527,6 +527,60 @@ code {
   height: 20px;
 }
 
+/* Results grid (samples × parameters): scrolls inside its box, never stacks into cards. */
+.results-table th,
+.results-table td {
+  vertical-align: top;
+}
+
+.results-table thead th {
+  white-space: normal;
+  min-width: 120px;
+  /* Units are case-sensitive (µm is not MM): no upper-casing here. */
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.results-table tbody th {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: inherit;
+  font-weight: normal;
+  color: inherit;
+  text-align: left;
+}
+
+/* The sample column stays visible while scrolling across parameters. */
+.results-table th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+
+.results-table thead th:first-child {
+  background: var(--surface-2);
+}
+
+.results-table .grid-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.results-table .input,
+.results-table .select {
+  min-width: 96px;
+}
+
+.cell-flag-caution {
+  background: var(--warn-soft);
+}
+
+.cell-flag-critical {
+  background: var(--bad-soft);
+}
+
 /* Rows that are kept for history only (cancelled, inactive…). */
 .table tr.row-muted > td {
   color: var(--muted);
