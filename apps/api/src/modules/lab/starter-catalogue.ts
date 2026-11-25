@@ -33,11 +33,13 @@ export const STARTER_SERVICE_TYPES: {
   code: string;
   name: string;
   sortOrder: number;
+  vesselRequired: boolean;
   fields: StarterField[];
 }[] = [
   {
     category: 'WATER',
     code: 'BW',
+    vesselRequired: true,
     name: 'Ballast Water',
     sortOrder: 10,
     fields: [
@@ -66,6 +68,7 @@ export const STARTER_SERVICE_TYPES: {
   {
     category: 'WATER',
     code: 'PW',
+    vesselRequired: false,
     name: 'Potable Water',
     sortOrder: 20,
     fields: [
@@ -88,6 +91,7 @@ export const STARTER_SERVICE_TYPES: {
   {
     category: 'WATER',
     code: 'GW',
+    vesselRequired: false,
     name: 'Grey Water',
     sortOrder: 30,
     fields: [
@@ -104,6 +108,7 @@ export const STARTER_SERVICE_TYPES: {
   {
     category: 'LUBE',
     code: 'LO',
+    vesselRequired: true,
     name: 'Lubricating Oil Analysis',
     sortOrder: 10,
     fields: [
@@ -123,6 +128,7 @@ export const STARTER_SERVICE_TYPES: {
   {
     category: 'FUEL',
     code: 'FO',
+    vesselRequired: true,
     name: 'Fuel Oil Analysis',
     sortOrder: 10,
     fields: [

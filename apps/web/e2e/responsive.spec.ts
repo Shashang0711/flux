@@ -40,6 +40,9 @@ test.describe('tenant admin pages fit every screen', () => {
     '/lab/receiving/new',
     '/lab/registration-queue',
     '/lab/registration-queue?link=unlinked',
+    '/lab/batches',
+    '/lab/batches/new',
+    '/lab/samples',
     '/account',
   ]) {
     test(`list/form page ${path}`, async ({ page }) => {
@@ -78,6 +81,11 @@ test.describe('tenant admin pages fit every screen', () => {
     for (const tab of ['general', 'bottles', 'variants', 'audit']) {
       await checkPage(page, `${kit}?tab=${tab}`);
     }
+  });
+
+  test('batch and sample detail', async ({ page }) => {
+    await checkPage(page, await firstRecordHref(page, '/lab/batches'));
+    await checkPage(page, await firstRecordHref(page, '/lab/samples'));
   });
 
   test('airway bill detail', async ({ page }) => {

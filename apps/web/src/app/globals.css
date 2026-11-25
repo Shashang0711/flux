@@ -499,6 +499,34 @@ code {
   margin-left: 6px;
 }
 
+/* Sticky bar for actions on selected table rows. */
+.selection-bar {
+  position: sticky;
+  top: calc(var(--topbar-height) + 8px);
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+@media (min-width: 1024px) {
+  .selection-bar {
+    top: 8px;
+  }
+}
+
+.row-check {
+  width: 20px;
+  height: 20px;
+}
+
 /* Rows that are kept for history only (cancelled, inactive…). */
 .table tr.row-muted > td {
   color: var(--muted);

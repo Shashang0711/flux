@@ -5,7 +5,7 @@ import { ListTabs } from '@/components/list-tabs';
 import { PageHeader } from '@/components/page-header';
 import { Pagination, readParams } from '@/components/pagination';
 import { loadOrNotFound, sessionWithPermission } from '@/lib/server-api';
-import { KitTable } from '../receiving/kit-forms';
+import { QueueTable } from './queue-table';
 
 export const metadata: Metadata = { title: 'Registration queue · FLUX' };
 
@@ -17,6 +17,7 @@ export default async function RegistrationQueuePage({
   const { session, allowed } = await sessionWithPermission('receiving.view');
   if (!allowed) return <Forbidden />;
   const canReceive = session.access.permissions.includes('receiving.receive');
+  const canRegister = session.access.permissions.includes('sample.register');
   const params = readParams(await searchParams, [
     'link',
     'q',
@@ -88,12 +89,11 @@ export default async function RegistrationQueuePage({
             Filter
           </button>
         </form>
-        <KitTable
+        <QueueTable
           kits={kits}
           options={options}
           canReceive={canReceive}
-          showAirwayBill
-          empty="No kits are waiting for registration."
+          canRegister={canRegister}
         />
         <Pagination meta={meta as PageMeta} basePath="/lab/registration-queue" params={params} />
       </div>

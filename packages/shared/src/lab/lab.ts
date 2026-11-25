@@ -56,6 +56,8 @@ export interface ServiceTypeSummaryDto extends LabRef {
   category: LabRef & { isActive: boolean };
   sortOrder: number;
   isActive: boolean;
+  /** Samples of this type cannot be registered without a vessel. */
+  vesselRequired: boolean;
   fieldCount: number;
   productCount: number;
 }
@@ -163,6 +165,7 @@ export const createServiceTypeSchema = z.object({
   name,
   description,
   sortOrder: sortOrder.default(0),
+  vesselRequired: z.boolean().default(false),
 });
 export const updateServiceTypeSchema = atLeastOne({
   categoryId: z.uuid({ message: 'Choose a category' }),
@@ -171,6 +174,7 @@ export const updateServiceTypeSchema = atLeastOne({
   description,
   sortOrder,
   isActive: z.boolean(),
+  vesselRequired: z.boolean(),
 });
 
 const fieldKeySchema = z

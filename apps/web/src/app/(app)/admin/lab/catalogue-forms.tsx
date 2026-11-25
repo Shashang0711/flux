@@ -238,6 +238,7 @@ export function ServiceTypeForm({
       name: text(data, 'name'),
       description: text(data, 'description'),
       sortOrder: Number(data.get('sortOrder') || 0),
+      vesselRequired: data.get('vesselRequired') === 'on',
       ...(serviceType ? { isActive: data.get('isActive') === 'on' } : {}),
     };
     await run(
@@ -302,6 +303,21 @@ export function ServiceTypeForm({
           style={{ maxWidth: 160 }}
         />
       </Field>
+      <label className="check">
+        <input
+          type="checkbox"
+          name="vesselRequired"
+          defaultChecked={serviceType?.vesselRequired ?? false}
+          disabled={disabled}
+        />
+        <span>
+          Vessel required
+          <span className="cell-sub">
+            Samples can only be registered with a vessel (e.g. ballast water). Leave off for
+            machinery or shore samples.
+          </span>
+        </span>
+      </label>
       {serviceType && (
         <label className="check">
           <input

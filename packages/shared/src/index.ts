@@ -17,3 +17,4 @@ export * from './notifications/notifications';
 export * from './vessels/overrides';
 export * from './lab/lab';
 export * from './receiving/receiving';
+export * from './samples/samples';

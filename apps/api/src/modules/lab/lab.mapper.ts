@@ -91,6 +91,7 @@ export function toServiceTypeSummaryDto(s: ServiceTypeSummaryRow): ServiceTypeSu
     category: s.category,
     sortOrder: s.sortOrder,
     isActive: s.isActive,
+    vesselRequired: s.vesselRequired,
     fieldCount: s._count.fields,
     productCount: s._count.products,
   };

@@ -127,7 +127,7 @@ async function seed(api: Api): Promise<void> {
     }),
   );
   const vesselId = options.vessels.find((v: { name: string }) => v.name === 'Aegean Star').id;
-  await json(
+  const seeded = await json(
     await api.post(`/api/v1/receiving/airway-bills/${awb.id}/kits`, {
       data: {
         productId: kit('BWK').id,
@@ -140,6 +140,18 @@ async function seed(api: Api): Promise<void> {
   await json(
     await api.post(`/api/v1/receiving/airway-bills/${awb.id}/kits`, {
       data: { productId: kit('LOK').id, condition: 'LEAKING', conditionNotes: 'Cap loose' },
+    }),
+  );
+  // Register the vessel-linked kit as a batch, so batches and samples have data.
+  await json(
+    await api.post('/api/v1/samples/batches', {
+      data: {
+        serviceTypeId: seeded.serviceType.id,
+        values: { port_of_sampling: 'Rotterdam' },
+        samples: [
+          { kitId: seeded.id, values: { sampling_point: 'intake', date_sampled: '2026-11-20' } },
+        ],
+      },
     }),
   );
 }

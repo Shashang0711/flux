@@ -56,6 +56,7 @@ export class StarterService {
             code: s.code,
             name: s.name,
             sortOrder: s.sortOrder,
+            vesselRequired: s.vesselRequired,
             fields: {
               // Nested rows take tenant_id from their parent (composite relations).
               create: s.fields.map((f, i) => ({

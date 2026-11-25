@@ -35,7 +35,14 @@ import {
 } from './lab.mapper';
 
 const CATEGORY_FIELDS = ['code', 'name', 'description', 'sortOrder', 'isActive'] as const;
-const SERVICE_TYPE_FIELDS = ['code', 'name', 'description', 'sortOrder', 'isActive'] as const;
+const SERVICE_TYPE_FIELDS = [
+  'code',
+  'name',
+  'description',
+  'sortOrder',
+  'isActive',
+  'vesselRequired',
+] as const;
 const FIELD_FIELDS = ['label', 'required', 'helpText', 'sortOrder', 'isActive'] as const;
 
 type Out<T extends z.ZodType> = z.output<T>;
