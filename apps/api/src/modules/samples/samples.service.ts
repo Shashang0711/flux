@@ -8,11 +8,13 @@ import {
   type BatchSummaryDto,
   type FieldIssue,
   type PageQuery,
+  type ReceiveRegisterOptionsDto,
   type RegistrationDraftDto,
   type SampleDto,
   type SampleListQuery,
   type SampleSummaryDto,
   type batchListQuerySchema,
+  type receiveAndRegisterSchema,
   type registerBatchSchema,
 } from '@flux/shared';
 import type { z } from 'zod';
@@ -102,6 +104,177 @@ export class SamplesService {
     user: AuthUser,
     input: Out<typeof registerBatchSchema>,
   ): Promise<BatchDto> {
+    return this.db.run(ctx.tenantId, async (tx) =>
+      this.batch(tx, await this.registerInTx(tx, ctx, user, input)),
+    );
+  }
+
+  /** Registers the batch in the caller's transaction; returns the batch id. */
+  async registerInTx(
+    tx: TenantTx,
+    ctx: TenantContext,
+    user: AuthUser,
+    input: Out<typeof registerBatchSchema>,
+  ): Promise<string> {
+    const st = await tx.serviceType.findUnique({
+      where: { id: input.serviceTypeId },
+      include: { category: true, fields: { orderBy: FIELD_ORDER } },
+    });
+    if (!st || !st.isActive || !st.category.isActive) {
+      throw invalid('Request validation failed', [
+        { path: 'serviceTypeId', message: 'Choose an active service type' },
+      ]);
+    }
+    const kits = await this.loadKits(
+      tx,
+      input.samples.map((s) => s.kitId),
+    );
+    const byId = new Map(kits.map((k) => [k.id, k]));
+
+    const taken = kits.filter((k) => k.status !== 'PENDING_REGISTRATION');
+    if (taken.length > 0) {
+      throw AppException.conflict(
+        `${taken.map((k) => k.code).join(', ')} ${taken.length === 1 ? 'is' : 'are'} no longer waiting for registration`,
+      );
+    }
+
+    // Kit, client and vessel checks for every sample, reported together with value errors.
+    const issues: FieldIssue[] = [];
+    const links = await Promise.all(
+      input.samples.map((s, i) =>
+        this.resolveSample(tx, user, st, byId.get(s.kitId)!, s, i, issues),
+      ),
+    );
+    let checked: { batch: Record<string, unknown>; samples: Record<string, unknown>[] } | null =
+      null;
+    try {
+      checked = validateRegistration(st.fields.map(toFieldDto), {
+        batch: input.values,
+        samples: input.samples.map((s) => s.values),
+      });
+    } catch (error) {
+      if (!(error instanceof AppException)) throw error;
+      if (Array.isArray(error.details)) issues.push(...error.details);
+    }
+    if (issues.length > 0 || !checked) {
+      throw invalid('Some registration details are missing or invalid', issues);
+    }
+
+    // Claim each kit: only a kit still waiting can be registered (row lock + condition).
+    for (const [i, s] of input.samples.entries()) {
+      const claimed = await tx.receivedKit.updateMany({
+        where: { id: s.kitId, status: 'PENDING_REGISTRATION' },
+        data: {
+          status: 'REGISTERED',
+          serviceTypeId: st.id,
+          clientId: links[i]!.clientId,
+          vesselId: links[i]!.vesselId,
+        },
+      });
+      if (claimed.count !== 1) {
+        throw AppException.conflict(
+          `${byId.get(s.kitId)!.code} was registered by someone else in the meantime`,
+        );
+      }
+    }
+
+    const year = new Date().getUTCFullYear();
+    const batch = await tx.registrationBatch.create({
+      data: {
+        tenantId: ctx.tenantId,
+        code: formatBatchCode(year, await nextSequence(tx, ctx.tenantId, `batch:${year}`)),
+        serviceTypeId: st.id,
+        values: checked.batch as Prisma.InputJsonValue,
+        notes: input.notes ?? null,
+        registeredById: user.id,
+      },
+    });
+    const sampleCodes: string[] = [];
+    for (const [i, s] of input.samples.entries()) {
+      const code = formatSampleCode(year, await nextSequence(tx, ctx.tenantId, `sample:${year}`));
+      sampleCodes.push(code);
+      await tx.sample.create({
+        data: {
+          tenantId: ctx.tenantId,
+          code,
+          batchId: batch.id,
+          serviceTypeId: st.id,
+          receivedKitId: s.kitId,
+          clientId: links[i]!.clientId,
+          vesselId: links[i]!.vesselId,
+          values: checked.samples[i] as Prisma.InputJsonValue,
+        },
+      });
+    }
+    await recordAudit(tx, {
+      tenantId: ctx.tenantId,
+      actor: user,
+      action: 'sample.batch_registered',
+      entity: { type: 'batch', id: batch.id, label: batch.code },
+      relatedIds: [
+        ...kits.map((k) => k.id),
+        ...links.flatMap((l) => [l.clientId, l.vesselId]).filter((x): x is string => Boolean(x)),
+      ],
+      changes: {
+        serviceType: { from: null, to: st.name },
+        samples: { added: sampleCodes, removed: [] },
+        kits: { added: input.samples.map((s) => byId.get(s.kitId)!.code), removed: [] },
+      },
+    });
+    return batch.id;
+  }
+
+  // ─── Receive & Register ───────────────────────────────────────────────────
+
+  async receiveRegisterOptions(
+    ctx: TenantContext,
+    user: AuthUser,
+  ): Promise<ReceiveRegisterOptionsDto> {
+    const options = await this.receiving.options(ctx, user);
+    return this.db.run(ctx.tenantId, async (tx) => {
+      const ids = [...new Set(options.kits.flatMap((k) => k.serviceTypes.map((s) => s.id)))];
+      const [serviceTypes, awbs] = await Promise.all([
+        tx.serviceType.findMany({
+          where: { id: { in: ids } },
+          include: { fields: { where: { isActive: true }, orderBy: FIELD_ORDER } },
+          orderBy: { name: 'asc' },
+        }),
+        tx.airwayBill.findMany({
+          where: { status: 'OPEN' },
+          orderBy: [{ receivedOn: 'desc' }, { createdAt: 'desc' }],
+          take: 50,
+        }),
+      ]);
+      return {
+        serviceTypes: serviceTypes.map((s) => ({
+          id: s.id,
+          code: s.code,
+          name: s.name,
+          vesselRequired: s.vesselRequired,
+          fields: s.fields.map(toFieldDto),
+        })),
+        kits: options.kits,
+        clients: options.clients,
+        vessels: options.vessels,
+        openAirwayBills: awbs.map((a) => ({
+          id: a.id,
+          number: a.number,
+          receivedOn: a.receivedOn.toISOString().slice(0, 10),
+        })),
+      };
+    });
+  }
+
+  /**
+   * Receive & Register (design pack §8): receives a package's kits and registers them as one
+   * batch in a single transaction, reusing receiving and registration. Everything is checked
+   * first, so all problems are reported together and nothing is saved unless all is valid.
+   */
+  receiveAndRegister(
+    ctx: TenantContext,
+    user: AuthUser,
+    input: Out<typeof receiveAndRegisterSchema>,
+  ): Promise<BatchDto> {
     return this.db.run(ctx.tenantId, async (tx) => {
       const st = await tx.serviceType.findUnique({
         where: { id: input.serviceTypeId },
@@ -112,30 +285,50 @@ export class SamplesService {
           { path: 'serviceTypeId', message: 'Choose an active service type' },
         ]);
       }
-      const kits = await this.loadKits(
-        tx,
-        input.samples.map((s) => s.kitId),
-      );
-      const byId = new Map(kits.map((k) => [k.id, k]));
+      const issues: FieldIssue[] = [];
 
-      const taken = kits.filter((k) => k.status !== 'PENDING_REGISTRATION');
-      if (taken.length > 0) {
-        throw AppException.conflict(
-          `${taken.map((k) => k.code).join(', ')} ${taken.length === 1 ? 'is' : 'are'} no longer waiting for registration`,
-        );
+      if (input.airwayBillId) {
+        const awb = await tx.airwayBill.findUnique({ where: { id: input.airwayBillId } });
+        if (!awb) issues.push({ path: 'airwayBillId', message: 'Choose an open airway bill' });
+        else if (awb.status !== 'OPEN') {
+          issues.push({ path: 'airwayBillId', message: 'This airway bill is closed' });
+        }
+      } else if (await tx.airwayBill.findFirst({ where: { number: input.airwayBill!.number } })) {
+        issues.push({
+          path: 'airwayBill.number',
+          message: 'An airway bill with this number already exists',
+        });
       }
 
-      // Kit, client and vessel checks for every sample, reported together with value errors.
-      const issues: FieldIssue[] = [];
-      const links = await Promise.all(
-        input.samples.map((s, i) =>
-          this.resolveSample(tx, user, st, byId.get(s.kitId)!, s, i, issues),
-        ),
-      );
-      let checked: { batch: Record<string, unknown>; samples: Record<string, unknown>[] } | null =
-        null;
+      const kitInputs = input.samples.map(({ values: _values, ...kit }) => ({
+        ...kit,
+        serviceTypeId: st.id,
+      }));
+      for (const [i, kit] of kitInputs.entries()) {
+        const path = (f: string) => `samples.${i}.${f === 'serviceTypeId' ? 'productId' : f}`;
+        try {
+          const links = await this.receiving.checkKitInTx(tx, user, kit);
+          if (!links.clientId)
+            issues.push({ path: path('clientId'), message: 'Choose the client' });
+          if (st.vesselRequired && !links.vesselId) {
+            issues.push({ path: path('vesselId'), message: `${st.name} samples need a vessel` });
+          }
+        } catch (error) {
+          if (!(error instanceof AppException) || !Array.isArray(error.details)) throw error;
+          issues.push(...error.details.map((d) => ({ path: path(d.path), message: d.message })));
+        }
+        if (kit.serialNumber) {
+          const taken = await this.receiving.serialTakenInTx(tx, kit.serialNumber);
+          if (taken) {
+            issues.push({
+              path: path('serialNumber'),
+              message: `Serial ${kit.serialNumber} is already received as ${taken}`,
+            });
+          }
+        }
+      }
       try {
-        checked = validateRegistration(st.fields.map(toFieldDto), {
+        validateRegistration(st.fields.map(toFieldDto), {
           batch: input.values,
           samples: input.samples.map((s) => s.values),
         });
@@ -143,72 +336,22 @@ export class SamplesService {
         if (!(error instanceof AppException)) throw error;
         if (Array.isArray(error.details)) issues.push(...error.details);
       }
-      if (issues.length > 0 || !checked) {
-        throw invalid('Some registration details are missing or invalid', issues);
-      }
+      if (issues.length > 0) throw invalid('Some details are missing or invalid', issues);
 
-      // Claim each kit: only a kit still waiting can be registered (row lock + condition).
-      for (const [i, s] of input.samples.entries()) {
-        const claimed = await tx.receivedKit.updateMany({
-          where: { id: s.kitId, status: 'PENDING_REGISTRATION' },
-          data: {
-            status: 'REGISTERED',
-            serviceTypeId: st.id,
-            clientId: links[i]!.clientId,
-            vesselId: links[i]!.vesselId,
-          },
-        });
-        if (claimed.count !== 1) {
-          throw AppException.conflict(
-            `${byId.get(s.kitId)!.code} was registered by someone else in the meantime`,
-          );
-        }
+      const awbId =
+        input.airwayBillId ??
+        (await this.receiving.createAirwayBillInTx(tx, ctx, input.airwayBill!, user)).id;
+      const kits = [];
+      for (const kit of kitInputs) {
+        kits.push(await this.receiving.receiveKitInTx(tx, ctx, awbId, kit, user));
       }
-
-      const year = new Date().getUTCFullYear();
-      const batch = await tx.registrationBatch.create({
-        data: {
-          tenantId: ctx.tenantId,
-          code: formatBatchCode(year, await nextSequence(tx, ctx.tenantId, `batch:${year}`)),
-          serviceTypeId: st.id,
-          values: checked.batch as Prisma.InputJsonValue,
-          notes: input.notes ?? null,
-          registeredById: user.id,
-        },
+      const batchId = await this.registerInTx(tx, ctx, user, {
+        serviceTypeId: st.id,
+        values: input.values,
+        notes: input.notes,
+        samples: kits.map((k, i) => ({ kitId: k.id, values: input.samples[i]!.values })),
       });
-      const sampleCodes: string[] = [];
-      for (const [i, s] of input.samples.entries()) {
-        const code = formatSampleCode(year, await nextSequence(tx, ctx.tenantId, `sample:${year}`));
-        sampleCodes.push(code);
-        await tx.sample.create({
-          data: {
-            tenantId: ctx.tenantId,
-            code,
-            batchId: batch.id,
-            serviceTypeId: st.id,
-            receivedKitId: s.kitId,
-            clientId: links[i]!.clientId,
-            vesselId: links[i]!.vesselId,
-            values: checked.samples[i] as Prisma.InputJsonValue,
-          },
-        });
-      }
-      await recordAudit(tx, {
-        tenantId: ctx.tenantId,
-        actor: user,
-        action: 'sample.batch_registered',
-        entity: { type: 'batch', id: batch.id, label: batch.code },
-        relatedIds: [
-          ...kits.map((k) => k.id),
-          ...links.flatMap((l) => [l.clientId, l.vesselId]).filter((x): x is string => Boolean(x)),
-        ],
-        changes: {
-          serviceType: { from: null, to: st.name },
-          samples: { added: sampleCodes, removed: [] },
-          kits: { added: input.samples.map((s) => byId.get(s.kitId)!.code), removed: [] },
-        },
-      });
-      return this.batch(tx, batch.id);
+      return this.batch(tx, batchId);
     });
   }
 

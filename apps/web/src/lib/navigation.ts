@@ -9,6 +9,8 @@ export interface NavItem {
   platformOnly?: boolean;
   /** Shown only to tenant users holding this permission. */
   permission?: PermissionKey;
+  /** Shown only to tenant users holding all of these permissions. */
+  permissions?: PermissionKey[];
 }
 
 export interface NavGroup {
@@ -46,6 +48,12 @@ export const NAVIGATION: NavGroup[] = [
     label: 'Samples',
     items: [
       { href: '/lab/receiving', label: 'Receiving', icon: 'inbox', permission: 'receiving.view' },
+      {
+        href: '/lab/receive-register',
+        label: 'Receive & register',
+        icon: 'plus',
+        permissions: ['receiving.receive', 'sample.register'],
+      },
       {
         href: '/lab/registration-queue',
         label: 'Registration queue',
@@ -98,6 +106,9 @@ export const NAVIGATION: NavGroup[] = [
 
 export function canSee(item: NavItem, session: SessionInfo): boolean {
   if (item.platformOnly) return session.user.isPlatformAdmin;
+  if (item.permissions && !item.permissions.every((p) => session.access.permissions.includes(p))) {
+    return false;
+  }
   if (item.permission) return session.access.permissions.includes(item.permission);
   return true;
 }

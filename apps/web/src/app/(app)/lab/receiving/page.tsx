@@ -32,9 +32,16 @@ export default async function ReceivingPage({
         description="Airway bills and the kits received under them. Received kits wait in the registration queue."
         actions={
           canReceive && (
-            <Link className="btn btn-primary" href="/lab/receiving/new">
-              New airway bill
-            </Link>
+            <>
+              {session.access.permissions.includes('sample.register') && (
+                <Link className="btn" href="/lab/receive-register">
+                  Receive & register
+                </Link>
+              )}
+              <Link className="btn btn-primary" href="/lab/receiving/new">
+                New airway bill
+              </Link>
+            </>
           )
         }
       />

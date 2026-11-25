@@ -266,3 +266,43 @@ test('register a batch from the registration queue', async ({ page }, info) => {
   await page.goto(`/lab/registration-queue?q=${tag}`);
   await expect(page.getByText('No kits are waiting for registration.')).toBeVisible();
 });
+
+test('receive & register a package in one step', async ({ page }, info) => {
+  const tag = `P${info.project.name.slice(0, 1).toUpperCase()}${Date.now().toString(36).toUpperCase()}`;
+  await page.goto('/lab/receive-register');
+  await page.getByLabel('AWB number').fill(tag);
+  await page.getByLabel('Service type').selectOption({ label: 'Ballast Water' });
+  await page.getByLabel('Port of sampling').fill('Piraeus');
+
+  const kit = (n: number) => page.getByRole('region', { name: `Kit ${n}` });
+  await kit(1).getByLabel('Serial number').fill(`${tag}-1`);
+  await kit(1).getByLabel('Variant').selectOption({ label: 'UV' });
+  await kit(1).getByLabel('Vessel *').selectOption({ label: 'Aegean Star · IMO 9074729' });
+  await expect(kit(1).getByLabel('Client *')).not.toHaveValue('');
+  await kit(1).getByLabel('Sampling point *').selectOption({ label: 'Intake' });
+  await kit(1).getByLabel('Date sampled *').fill('2026-11-22');
+
+  // The second kit starts as a copy of the first (kit type, variant, vessel, client).
+  await page.getByRole('button', { name: 'Add another kit' }).click();
+  await expect(kit(2).getByLabel('Variant')).toHaveValue(
+    await kit(1).getByLabel('Variant').inputValue(),
+  );
+  await kit(2).getByLabel('Serial number').fill(`${tag}-2`);
+  await kit(2).getByLabel('Condition on arrival').selectOption({ label: 'Damaged' });
+  await page.getByRole('button', { name: 'Receive & register 2 kits' }).click();
+  // Nothing is saved while kit 2 lacks its sample details.
+  await expect(kit(2).getByText('Sampling point is required')).toBeVisible();
+  await kit(2).getByLabel('Sampling point *').selectOption({ label: 'Discharge' });
+  await kit(2).getByLabel('Date sampled *').fill('2026-11-22');
+  await page.getByRole('button', { name: 'Receive & register 2 kits' }).click();
+
+  await expect(page.getByRole('heading', { level: 1, name: /^Batch B\d{2}-\d{5}$/ })).toBeVisible();
+  const samples = page.getByRole('table', { name: 'Samples' }).locator('tbody tr');
+  await expect(samples).toHaveCount(2);
+  await expect(samples.nth(1)).toContainText(`${tag}-2`);
+  await expect(page.getByText('Piraeus')).toBeVisible();
+
+  await page.goto(`/lab/receiving?q=${tag}`);
+  await expect(page.locator('main tbody tr')).toHaveCount(1);
+  await expect(page.locator('main tbody tr')).toContainText('2');
+});

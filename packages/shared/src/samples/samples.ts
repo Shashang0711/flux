@@ -1,7 +1,12 @@
 import { z } from 'zod';
 import type { CustomFieldValues } from '../custom-fields/custom-fields';
 import type { RegistrationFieldDto } from '../lab/lab';
-import type { ReceivedKitDto, ReceivingOptionsDto } from '../receiving/receiving';
+import {
+  createAirwayBillSchema,
+  receiveKitSchema,
+  type ReceivedKitDto,
+  type ReceivingOptionsDto,
+} from '../receiving/receiving';
 
 /**
  * Batch registration (design pack §8, §16, §20). Decided for M11:
@@ -162,3 +167,65 @@ export const sampleListQuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
 });
 export type SampleListQuery = z.output<typeof sampleListQuerySchema>;
+
+// ─── Receive & Register (M12) ───────────────────────────────────────────────
+
+/** What the Receive & Register form needs. */
+export interface ReceiveRegisterOptionsDto {
+  /** Active service types that at least one active kit is used for, with their active fields. */
+  serviceTypes: (Ref & { vesselRequired: boolean; fields: RegistrationFieldDto[] })[];
+  kits: ReceivingOptionsDto['kits'];
+  clients: ReceivingOptionsDto['clients'];
+  vessels: ReceivingOptionsDto['vessels'];
+  /** Open airway bills the package can be added to, newest first. */
+  openAirwayBills: { id: string; number: string; receivedOn: string }[];
+}
+
+/**
+ * Receive & Register (design pack §8): a package is received and its kits registered together,
+ * in one transaction. Either an open AWB is chosen (airwayBillId) or a new one is described.
+ * Errors use the batch-registration paths: samples.<n>.<field>.
+ */
+export const receiveAndRegisterSchema = z
+  .object({
+    airwayBillId: optionalUuid,
+    airwayBill: createAirwayBillSchema.optional(),
+    serviceTypeId: z.uuid({ message: 'Choose the service type' }),
+    values: z.record(z.string(), z.unknown()).default({}),
+    notes: z
+      .string()
+      .trim()
+      .max(2000)
+      .transform((v) => (v === '' ? null : v))
+      .nullable()
+      .optional(),
+    samples: z
+      .array(
+        receiveKitSchema
+          .omit({ serviceTypeId: true })
+          .extend({ values: z.record(z.string(), z.unknown()).default({}) }),
+      )
+      .min(1, 'Add at least one kit')
+      .max(MAX_BATCH_SAMPLES, `At most ${MAX_BATCH_SAMPLES} kits per batch`),
+  })
+  .superRefine((v, ctx) => {
+    if (!v.airwayBillId && !v.airwayBill) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['airwayBill', 'number'],
+        message: 'AWB number is required',
+      });
+    }
+    const seen = new Map<string, number>();
+    v.samples.forEach((s, i) => {
+      if (!s.serialNumber) return;
+      if (seen.has(s.serialNumber)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['samples', i, 'serialNumber'],
+          message: `Same serial as kit ${seen.get(s.serialNumber)! + 1}`,
+        });
+      } else seen.set(s.serialNumber, i);
+    });
+  });
+export type ReceiveAndRegisterRequest = z.input<typeof receiveAndRegisterSchema>;
