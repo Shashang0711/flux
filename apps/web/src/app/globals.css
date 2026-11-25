@@ -497,7 +497,8 @@ code {
   margin-left: 6px;
 }
 
-.table .cell-sub {
+/* A muted second line under a name (table cells, checkbox labels…). */
+.cell-sub {
   display: block;
   font-size: 0.8rem;
   color: var(--muted);

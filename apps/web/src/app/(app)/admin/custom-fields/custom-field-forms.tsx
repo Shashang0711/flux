@@ -6,7 +6,6 @@ import {
   CUSTOM_FIELD_TYPES,
   customFieldKeyFromLabel,
   type CustomFieldDefinitionDto,
-  type CustomFieldOption,
   type CustomFieldType,
 } from '@flux/shared';
 import { Badge } from '@/components/badges';
@@ -14,31 +13,11 @@ import { DataTable } from '@/components/data-table';
 import { Field, FormStatus } from '@/components/field';
 import { useMutation } from '@/hooks/use-mutation';
 import { apiFetch } from '@/lib/api';
+import { optionsText, parseOptions } from '@/lib/field-options';
 import styles from './custom-fields.module.css';
 
 const typeName = (type: CustomFieldType) =>
   CUSTOM_FIELD_TYPES.find((t) => t.key === type)?.name ?? type;
-
-/**
- * Dropdown options are edited one per line: "Label", or "value = Label" to keep a value fixed.
- * Values default to a key derived from the label, so existing options keep their values.
- */
-function parseOptions(text: string, existing: CustomFieldOption[] = []): CustomFieldOption[] {
-  return text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [left, ...rest] = line.split('=');
-      if (rest.length > 0) return { value: left!.trim(), label: rest.join('=').trim() };
-      const match = existing.find((o) => o.label === line);
-      return { value: match?.value ?? customFieldKeyFromLabel(line), label: line };
-    });
-}
-
-function optionsText(options: CustomFieldOption[]): string {
-  return options.map((o) => `${o.value} = ${o.label}`).join('\n');
-}
 
 export function AddCustomField({ entity }: { entity: string }) {
   const { pending, error, fields, run } = useMutation();
