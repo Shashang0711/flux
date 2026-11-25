@@ -61,6 +61,15 @@ model Tenant {
   vesselNotificationOverrides              VesselNotificationOverride[]
   vesselNotificationOverrideContacts       VesselNotificationOverrideContact[]
   vesselNotificationOverrideVesselContacts VesselNotificationOverrideVesselContact[]
+  labCategories                            LabCategory[]
+  serviceTypes                             ServiceType[]
+  registrationFields                       RegistrationField[]
+  bottleTypes                              BottleType[]
+  products                                 Product[]
+  productServiceTypes                      ProductServiceType[]
+  productVariants                          ProductVariant[]
+  productBottles                           ProductBottle[]
+  variantBottles                           VariantBottle[]
 
   @@map("tenants")
 }
@@ -806,4 +815,193 @@ model VesselNotificationOverrideVesselContact {
   @@unique([overrideId, contactId])
   @@index([contactId])
   @@map("vessel_notification_override_vessel_contacts")
+}
+
+// ─── Laboratory master data (M9) ────────────────────────────────────────────
+// Design pack §7: Category → Service Type → Product/Kit → Variant → Bottle configuration.
+// Codes are upper-case and unique per tenant (per kit for variants). Nothing is deleted except
+// link rows (kit ↔ service type, bottle lines): records are deactivated. Every relation is a
+// composite FK including tenant_id, so a link can never cross organisations.
+
+enum RegistrationFieldScope {
+  BATCH
+  SAMPLE
+}
+
+model LabCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  code        String
+  name        String
+  description String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  serviceTypes ServiceType[]
+
+  @@unique([tenantId, code])
+  @@unique([id, tenantId])
+  @@map("lab_categories")
+}
+
+/// What is tested (e.g. Ballast Water). Defines the fields entered when registering samples.
+model ServiceType {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  categoryId  String   @map("category_id") @db.Uuid
+  code        String
+  name        String
+  description String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  category LabCategory          @relation(fields: [categoryId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  fields   RegistrationField[]
+  products ProductServiceType[]
+
+  @@unique([tenantId, code])
+  @@unique([id, tenantId])
+  @@index([categoryId])
+  @@map("service_types")
+}
+
+/// A field entered at registration ("Registration fields 1, 2, 3…"), once per batch or per sample.
+/// key, type and scope never change after creation.
+model RegistrationField {
+  id            String                 @id @default(uuid()) @db.Uuid
+  tenantId      String                 @map("tenant_id") @db.Uuid
+  serviceTypeId String                 @map("service_type_id") @db.Uuid
+  key           String
+  label         String
+  type          CustomFieldType
+  scope         RegistrationFieldScope
+  required      Boolean                @default(false)
+  helpText      String?                @map("help_text")
+  /// [{ value, label }] for SELECT fields.
+  options       Json                   @default("[]")
+  sortOrder     Int                    @default(0) @map("sort_order")
+  isActive      Boolean                @default(true) @map("is_active")
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  serviceType ServiceType @relation(fields: [serviceTypeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([serviceTypeId, key])
+  @@map("service_type_fields")
+}
+
+model BottleType {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  code      String
+  name      String
+  volumeMl  Int      @map("volume_ml")
+  material  String?
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  productBottles ProductBottle[]
+  variantBottles VariantBottle[]
+
+  @@unique([tenantId, code])
+  @@unique([id, tenantId])
+  @@map("bottle_types")
+}
+
+/// A sampling kit (product), usable for one or more service types.
+model Product {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  code        String
+  name        String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  serviceTypes ProductServiceType[]
+  variants     ProductVariant[]
+  bottles      ProductBottle[]
+
+  @@unique([tenantId, code])
+  @@unique([id, tenantId])
+  @@map("products")
+}
+
+model ProductServiceType {
+  tenantId      String @map("tenant_id") @db.Uuid
+  productId     String @map("product_id") @db.Uuid
+  serviceTypeId String @map("service_type_id") @db.Uuid
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  product     Product     @relation(fields: [productId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  serviceType ServiceType @relation(fields: [serviceTypeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@id([productId, serviceTypeId])
+  @@index([serviceTypeId])
+  @@map("product_service_types")
+}
+
+/// A kit variant (e.g. UV, Electrolysis, Ozone). Uses the kit's bottles unless it has its own.
+model ProductVariant {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  code      String
+  name      String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  product Product         @relation(fields: [productId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  bottles VariantBottle[]
+
+  @@unique([productId, code])
+  @@unique([id, tenantId])
+  @@map("product_variants")
+}
+
+/// Bottles in a kit (product_bottle_configs in the design pack).
+model ProductBottle {
+  id           String @id @default(uuid()) @db.Uuid
+  tenantId     String @map("tenant_id") @db.Uuid
+  productId    String @map("product_id") @db.Uuid
+  bottleTypeId String @map("bottle_type_id") @db.Uuid
+  quantity     Int
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  product    Product    @relation(fields: [productId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  bottleType BottleType @relation(fields: [bottleTypeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([productId, bottleTypeId])
+  @@index([bottleTypeId])
+  @@map("product_bottle_configs")
+}
+
+/// A variant's own bottles; when present they replace the kit's list for that variant.
+model VariantBottle {
+  id           String @id @default(uuid()) @db.Uuid
+  tenantId     String @map("tenant_id") @db.Uuid
+  variantId    String @map("variant_id") @db.Uuid
+  bottleTypeId String @map("bottle_type_id") @db.Uuid
+  quantity     Int
+
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  variant    ProductVariant @relation(fields: [variantId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  bottleType BottleType     @relation(fields: [bottleTypeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([variantId, bottleTypeId])
+  @@index([bottleTypeId])
+  @@map("variant_bottle_configs")
 }

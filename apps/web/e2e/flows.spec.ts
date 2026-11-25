@@ -110,3 +110,55 @@ test('vessel overrides: billing party and a notification, then back to the clien
   await expect(row).toContainText('As client');
   await expect(row.getByRole('button', { name: 'Override' })).toBeVisible();
 });
+
+test('service type preview validates registration values on the server', async ({ page }) => {
+  await page.goto('/admin/lab/service-types?q=Ballast');
+  await page.getByRole('link', { name: 'Ballast Water', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Lists' })
+    .getByRole('link', { name: 'Preview' })
+    .click();
+  await expect(page.getByRole('group', { name: 'Batch details' })).toBeVisible();
+
+  // Nothing filled: required sample fields are reported per sample.
+  await page.getByRole('button', { name: 'Check values' }).click();
+  await expect(page.getByText('Sampling point is required').first()).toBeVisible();
+
+  for (const i of [0, 1]) {
+    const sample = page.getByRole('group', { name: `Sample ${i + 1}` });
+    await sample
+      .getByLabel('Sampling point *')
+      .selectOption({ label: i === 0 ? 'Intake' : 'Discharge' });
+    await sample.getByLabel('Date sampled *').fill('2026-11-20');
+  }
+  await page.getByRole('button', { name: 'Check values' }).click();
+  await expect(page.getByText('All values are valid.')).toBeVisible();
+  await expect(page.getByText(/Sample 2: Sampling point Discharge/)).toBeVisible();
+});
+
+test('create a kit with bottles and a variant', async ({ page }, info) => {
+  const code = `T${info.project.name.slice(0, 1).toUpperCase()}${Date.now().toString(36).toUpperCase()}`;
+  await page.goto('/admin/lab/kits/new');
+  await page.getByLabel('Name').fill(`Test kit ${code}`);
+  await page.getByLabel('Code').fill(code);
+  await page.getByRole('checkbox', { name: 'Potable Water' }).check();
+  await page.getByRole('button', { name: 'Create kit' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: `Test kit ${code}` })).toBeVisible();
+
+  // Lands on the Bottles tab.
+  await page.getByRole('button', { name: 'Add bottle' }).click();
+  await page.getByLabel('Quantity').fill('2');
+  await page.getByRole('button', { name: 'Save bottles' }).click();
+  await expect(page.getByText('Saved.')).toBeVisible();
+
+  await page
+    .getByRole('navigation', { name: 'Lists' })
+    .getByRole('link', { name: 'Variants' })
+    .click();
+  await page.getByLabel('Name').fill('Standard');
+  await page.getByLabel('Code').fill('STD');
+  await page.getByRole('button', { name: 'Add variant' }).click();
+  const row = page.locator('main tbody tr').filter({ hasText: 'Standard' });
+  await expect(row).toContainText('Same as the kit');
+  await expect(row).toContainText('2 ×');
+});

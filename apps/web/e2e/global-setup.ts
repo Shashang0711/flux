@@ -19,7 +19,7 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
     data: {
       name: 'Oceanic Testing Ltd',
       slug: 'oceanic-e2e',
-      modules: ['clients', 'vessels', 'samples', 'reports'],
+      modules: ['clients', 'vessels', 'lab-setup', 'samples', 'reports'],
       admin: { name: 'Owen Owner', email: OWNER.email, password: OWNER.password },
     },
   });
@@ -76,6 +76,7 @@ async function seed(api: Api): Promise<void> {
       },
     }),
   );
+  await json(await api.post('/api/v1/lab/starter-catalogue'));
   const clients = [];
   for (const name of [
     'Aegean Bulk Carriers SA',

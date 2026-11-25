@@ -9,6 +9,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module';
 import { HealthModule } from './modules/health/health.module';
+import { LabModule } from './modules/lab/lab.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { ReferenceDataModule } from './modules/reference-data/reference-data.module';
 import { RolesModule } from './modules/roles/roles.module';
@@ -54,6 +55,7 @@ export const REQUEST_ID_HEADER = 'x-request-id';
     CustomFieldsModule,
     ClientsModule,
     VesselsModule,
+    LabModule,
   ],
 })
 export class AppModule {}

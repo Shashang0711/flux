@@ -1,37 +1,56 @@
 import type { CustomFieldDefinitionDto, CustomFieldValues } from '@flux/shared';
 import { Field } from '@/components/field';
 
-const PREFIX = 'cf:';
+/** What an input needs from a field definition (custom fields and registration fields). */
+export type InputDefinition = Pick<
+  CustomFieldDefinitionDto,
+  'id' | 'key' | 'label' | 'type' | 'required' | 'helpText' | 'options'
+>;
 
-/** Inputs for a record's custom fields. Names are "cf:<key>"; read them back with customFieldPayload. */
+/** Input names: "cf:<key>" for record custom fields, "<scope>:<key>" otherwise. */
+const namePrefix = (scope: string) => (scope === 'customFields' ? 'cf:' : `${scope}:`);
+const idFor = (scope: string, key: string) =>
+  `${scope === 'customFields' ? 'cf' : scope.replace(/\./g, '-')}-${key}`;
+
+/**
+ * Inputs for tenant-defined fields. `scope` is the API's error path prefix ("customFields",
+ * "batch", "samples.0"); read values back with customFieldPayload(data, definitions, scope).
+ */
 export function CustomFieldInputs({
   definitions,
   values,
   fields,
   disabled,
+  scope = 'customFields',
+  legend = 'Additional information',
 }: {
-  definitions: CustomFieldDefinitionDto[];
+  definitions: InputDefinition[];
   values?: CustomFieldValues;
-  /** Field errors from the API, keyed "customFields.<key>". */
+  /** Field errors from the API, keyed "<scope>.<key>". */
   fields: Record<string, string>;
   disabled?: boolean;
+  scope?: string;
+  /** null for no legend. */
+  legend?: string | null;
 }) {
   if (definitions.length === 0) return null;
   return (
     <fieldset className="stack" style={{ border: 0, padding: 0, margin: 0 }}>
-      <legend className="card-title" style={{ marginBottom: 12 }}>
-        Additional information
-      </legend>
+      {legend && (
+        <legend className="card-title" style={{ marginBottom: 12 }}>
+          {legend}
+        </legend>
+      )}
       {definitions.map((def) => {
-        const id = `cf-${def.key}`;
-        const name = `${PREFIX}${def.key}`;
+        const id = idFor(scope, def.key);
+        const name = `${namePrefix(scope)}${def.key}`;
         const current = values?.[def.key];
         const label = def.required ? `${def.label} *` : def.label;
         const common = {
           id,
           name,
           disabled,
-          'aria-invalid': Boolean(fields[`customFields.${def.key}`]),
+          'aria-invalid': Boolean(fields[`${scope}.${def.key}`]),
         };
         let control;
         switch (def.type) {
@@ -102,7 +121,7 @@ export function CustomFieldInputs({
             label={label}
             htmlFor={id}
             hint={def.helpText ?? undefined}
-            error={fields[`customFields.${def.key}`]}
+            error={fields[`${scope}.${def.key}`]}
           >
             {control}
           </Field>
@@ -113,10 +132,14 @@ export function CustomFieldInputs({
 }
 
 /** Reads custom field inputs from a form: { key: value } with booleans parsed and "" for empty. */
-export function customFieldPayload(data: FormData, definitions: CustomFieldDefinitionDto[]) {
+export function customFieldPayload(
+  data: FormData,
+  definitions: InputDefinition[],
+  scope = 'customFields',
+) {
   const result: Record<string, string | boolean> = {};
   for (const def of definitions) {
-    const raw = String(data.get(`${PREFIX}${def.key}`) ?? '');
+    const raw = String(data.get(`${namePrefix(scope)}${def.key}`) ?? '');
     result[def.key] = def.type === 'BOOLEAN' && raw !== '' ? raw === 'true' : raw;
   }
   return result;

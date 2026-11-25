@@ -30,6 +30,12 @@ test.describe('tenant admin pages fit every screen', () => {
     '/admin/reference-data',
     '/admin/custom-fields',
     '/admin/audit',
+    '/admin/lab/service-types',
+    '/admin/lab/service-types?list=categories',
+    '/admin/lab/service-types/new',
+    '/admin/lab/kits',
+    '/admin/lab/kits/new',
+    '/admin/lab/bottles',
     '/account',
   ]) {
     test(`list/form page ${path}`, async ({ page }) => {
@@ -57,6 +63,17 @@ test.describe('tenant admin pages fit every screen', () => {
     const vessel = await firstRecordHref(page, '/admin/vessels');
     for (const tab of ['overview', 'clients', 'billing', 'contacts', 'notifications', 'audit'])
       await checkPage(page, `${vessel}?tab=${tab}`);
+  });
+
+  test('lab service type and kit detail tabs', async ({ page }) => {
+    const st = await firstRecordHref(page, '/admin/lab/service-types');
+    for (const tab of ['general', 'fields', 'preview', 'kits', 'audit']) {
+      await checkPage(page, `${st}?tab=${tab}`);
+    }
+    const kit = await firstRecordHref(page, '/admin/lab/kits');
+    for (const tab of ['general', 'bottles', 'variants', 'audit']) {
+      await checkPage(page, `${kit}?tab=${tab}`);
+    }
   });
 
   test('user and role detail', async ({ page }) => {

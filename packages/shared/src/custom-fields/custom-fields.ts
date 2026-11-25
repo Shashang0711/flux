@@ -159,11 +159,13 @@ export function validateCustomFieldValues(
   definitions: readonly Definition[],
   input: Record<string, unknown> | undefined,
   mode: 'create' | 'update',
+  /** Prefix of error paths, e.g. "batch" for registration fields. */
+  pathPrefix = 'customFields',
 ): { values: CustomFieldValues; issues: FieldIssue[] } {
   const values: CustomFieldValues = {};
   const issues: FieldIssue[] = [];
   const sent = input ?? {};
-  const path = (key: string) => `customFields.${key}`;
+  const path = (key: string) => `${pathPrefix}.${key}`;
 
   for (const [key, raw] of Object.entries(sent)) {
     const def = definitions.find((d) => d.key === key);

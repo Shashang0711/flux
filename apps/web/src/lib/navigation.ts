@@ -43,6 +43,24 @@ export const NAVIGATION: NavGroup[] = [
     ],
   },
   {
+    label: 'Laboratory',
+    items: [
+      {
+        href: '/admin/lab/service-types',
+        label: 'Service types',
+        icon: 'flask',
+        permission: 'lab-setup.view',
+      },
+      { href: '/admin/lab/kits', label: 'Kits', icon: 'kit', permission: 'lab-setup.view' },
+      {
+        href: '/admin/lab/bottles',
+        label: 'Bottle types',
+        icon: 'bottle',
+        permission: 'lab-setup.view',
+      },
+    ],
+  },
+  {
     label: 'Administration',
     items: [
       { href: '/admin/users', label: 'Users', icon: 'users', permission: 'user.view' },

@@ -132,6 +132,9 @@ renders the shell: a sidebar built from `lib/navigation.ts`, showing only what t
 | `/admin/vessels/:id?tab=billing` | `vessel.view`           | Vessel's Billing / Contacts / Notifications overrides, per client link (`&link=`)                     |
 | `/admin/reference-data`          | `reference-data.manage` | Hide FLUX defaults, add own items                                                                     |
 | `/admin/custom-fields`           | `custom-field.manage`   | Define custom fields per record type                                                                  |
+| `/admin/lab/service-types/...`   | `lab-setup.view`        | Categories and service types; General / Registration fields / Preview / Kits / Audit                  |
+| `/admin/lab/kits/...`            | `lab-setup.view`        | Kits: service types, bottles, variants (own bottles), audit                                           |
+| `/admin/lab/bottles`             | `lab-setup.view`        | Bottle types                                                                                          |
 | `/admin/audit`                   | `audit.view`            | Audit log with filters                                                                                |
 | `/platform/reference-data`       | Platform admins         | Manage FLUX default reference data                                                                    |
 | `/platform/audit`                | Platform admins         | Platform-level audit log                                                                              |
@@ -344,6 +347,30 @@ a vessel managed by one client and owned by another can bill and notify each dif
 - Client rules need `client.manage`; vessel overrides `vessel.manage` (plus both modules). Every
   change is audited (client rules on the client; overrides on the vessel, related to the client).
 
+## Laboratory master data
+
+Design pack §7: **Category → Service Type → Kit (product) → Variant → Bottles**, owned by each
+organisation (module Laboratory Setup; `lab-setup.view` / `lab-setup.manage`).
+
+- **Categories** own their **service types** (Water → Ballast Water). A **kit** is used for one or
+  more service types (many-to-many: one water kit can serve Potable and Grey Water).
+- **Registration fields** belong to a service type and are entered **once per batch** (e.g. port
+  of sampling) or **for each sample** (e.g. sampling point, date sampled). Types as custom fields
+  (text, number, date, yes/no, dropdown) with required flag and order; key, type and scope never
+  change. `POST /lab/service-types/:id/registration-check` validates values exactly as sample
+  registration will (M11) and saves nothing; the service type's Preview tab uses it.
+- **Bottle types** are a tenant-wide list. A kit lists its bottles with quantities; a **variant**
+  (UV, Electrolysis, Ozone…) uses the kit's bottles unless it has its own list, which replaces
+  them.
+- Codes (`WATER`, `BW`, `BWK`, `PET-1000`) are upper-case and unique per organisation (variants:
+  per kit). Records are **deactivated, never deleted**, so samples keep stable references;
+  inactive items stay on existing kits but cannot be newly added.
+- **FLUX starter catalogue**: `POST /lab/starter-catalogue` copies example categories, service
+  types with fields, bottle types and kits into the organisation. Matching is by code, so
+  importing again only adds what is missing and never overwrites edits.
+- Every relation is a composite FK including `tenant_id`; all tables have RLS. Changes are
+  audited on the category, service type, bottle type or kit.
+
 ## Custom fields
 
 Tenants add their own fields to records (Admin → Custom fields, `custom-field.manage`). Record
@@ -392,79 +419,88 @@ When adding a feature that changes data:
 
 ### Endpoints
 
-| Method and path                                                                         | Access                          | Purpose                                                                 |
-| --------------------------------------------------------------------------------------- | ------------------------------- | ----------------------------------------------------------------------- |
-| `POST /api/v1/auth/login`                                                               | Public                          | Sign in; sets the session cookie                                        |
-| `POST /api/v1/auth/logout`                                                              | Public                          | Revoke the session and clear the cookie                                 |
-| `GET /api/v1/auth/me`                                                                   | Signed in                       | Current user                                                            |
-| `POST /api/v1/auth/change-password`                                                     | Signed in                       | Change own password; ends other sessions                                |
-| `GET /api/v1/users`                                                                     | `user.view`                     | List own tenant's users (`page`, `pageSize`, `q`, `status`)             |
-| `POST /api/v1/users`                                                                    | `user.manage`                   | Create a user (optionally with `roleIds`)                               |
-| `GET /api/v1/users/:id`                                                                 | `user.view`                     | Read user                                                               |
-| `PATCH /api/v1/users/:id`                                                               | `user.manage`                   | Update name, email or status                                            |
-| `PUT /api/v1/users/:id/roles`                                                           | `user.manage`                   | Replace the user's roles                                                |
-| `POST /api/v1/users/:id/reset-password`                                                 | `user.manage`                   | Set a new password; ends their sessions                                 |
-| `GET /api/v1/access/catalogue`                                                          | `role.view`                     | Licensed modules, portals and permissions                               |
-| `GET /api/v1/roles`                                                                     | `role.view`                     | List roles (`q`, `isActive`)                                            |
-| `POST /api/v1/roles`                                                                    | `role.manage`                   | Create role with portals, modules, permissions                          |
-| `GET /api/v1/roles/:id`                                                                 | `role.view`                     | Read role and its access                                                |
-| `PATCH /api/v1/roles/:id`                                                               | `role.manage`                   | Name, description, default portal, active                               |
-| `PUT /api/v1/roles/:id/portals`                                                         | `role.manage`                   | Portal Access tab                                                       |
-| `PUT /api/v1/roles/:id/modules`                                                         | `role.manage`                   | Module Access tab                                                       |
-| `PUT /api/v1/roles/:id/permissions`                                                     | `role.manage`                   | Role Permissions tab                                                    |
-| `POST /api/v1/roles/:id/clone`                                                          | `role.manage`                   | Clone with copy options                                                 |
-| `GET /api/v1/roles/:id/users`                                                           | `role.view`                     | Assigned Users tab                                                      |
-| `POST /api/v1/roles/:id/users`                                                          | `user.manage`                   | Assign users                                                            |
-| `DELETE /api/v1/roles/:id/users/:userId`                                                | `user.manage`                   | Unassign a user                                                         |
-| `GET /api/v1/audit-logs`                                                                | `audit.view`                    | Audit log (`action`, `entityType`, `entityId`, `actorId`, `from`, `to`) |
-| `GET /api/v1/platform/tenants/:id/audit-logs`                                           | Platform admin                  | Organisation-level history of a tenant                                  |
-| `GET /api/v1/platform/modules`                                                          | Platform admin                  | Module catalogue                                                        |
-| `GET /api/v1/platform/tenants`                                                          | Platform admin                  | List tenants (`q`, `status`)                                            |
-| `POST /api/v1/platform/tenants`                                                         | Platform admin                  | Create tenant + modules + first admin                                   |
-| `GET /api/v1/platform/tenants/:id`                                                      | Platform admin                  | Read tenant                                                             |
-| `PATCH /api/v1/platform/tenants/:id`                                                    | Platform admin                  | Rename, suspend or reactivate                                           |
-| `PUT /api/v1/platform/tenants/:id/modules`                                              | Platform admin                  | Set licensed optional modules                                           |
-| `GET /api/v1/platform/audit-logs`                                                       | Platform admin                  | Platform-level audit entries                                            |
-| `GET/POST /api/v1/platform/reference-data/:list`                                        | Platform admin                  | List / add FLUX defaults                                                |
-| `PATCH /api/v1/platform/reference-data/:list/:id`                                       | Platform admin                  | Edit / deactivate a FLUX default                                        |
-| `GET /api/v1/reference-data`                                                            | Signed in (tenant)              | Lists available to the organisation                                     |
-| `GET /api/v1/reference-data/:list`                                                      | Signed in (tenant)              | Items (`view=usable` default, or `all`)                                 |
-| `POST /api/v1/reference-data/:list`                                                     | `reference-data.manage`         | Add an own item                                                         |
-| `PATCH /api/v1/reference-data/:list/:id`                                                | `reference-data.manage`         | Edit / deactivate an own item                                           |
-| `PUT /api/v1/reference-data/:list/:id/visibility`                                       | `reference-data.manage`         | Hide or show a FLUX default                                             |
-| `GET /api/v1/clients`                                                                   | `client.view`                   | List (`q`, `status`)                                                    |
-| `POST /api/v1/clients`                                                                  | `client.manage`                 | Create (Client ID generated; `customFields`)                            |
-| `GET /api/v1/clients/:id`                                                               | `client.view`                   | Read with addresses, contacts, billing parties                          |
-| `PATCH /api/v1/clients/:id`                                                             | `client.manage`                 | Update, (de)activate, `customFields`                                    |
-| `POST /api/v1/clients/:id/addresses`                                                    | `client.manage`                 | Add address                                                             |
-| `PATCH/DELETE /api/v1/clients/:id/addresses/:addressId`                                 | `client.manage`                 | Edit / remove address                                                   |
-| `POST /api/v1/clients/:id/contacts`                                                     | `client.manage`                 | Add contact                                                             |
-| `PATCH/DELETE /api/v1/clients/:id/contacts/:contactId`                                  | `client.manage`                 | Edit / remove contact                                                   |
-| `GET /api/v1/clients/:id/billing-parties`                                               | `client.view`                   | Billing Party Grid                                                      |
-| `POST /api/v1/clients/:id/billing-parties`                                              | `client.manage`                 | Billing Party Add                                                       |
-| `PATCH /api/v1/clients/:id/billing-parties/:partyId`                                    | `client.manage`                 | Edit, default, (de)activate                                             |
-| `GET /api/v1/vessels`                                                                   | `vessel.view`                   | List (`q`: name, previous name, IMO, code; `status`; `vesselTypeId`)    |
-| `POST /api/v1/vessels`                                                                  | `vessel.manage`                 | Create (code generated; IMO checked; `customFields`)                    |
-| `GET /api/v1/vessels/:id`                                                               | `vessel.view`                   | Read with type and class society                                        |
-| `PATCH /api/v1/vessels/:id`                                                             | `vessel.manage`                 | Update, (de)activate                                                    |
-| `GET/POST /api/v1/vessels/:id/relationships`                                            | `vessel.view` / `vessel.manage` | List (`status`) / link a client                                         |
-| `PATCH /api/v1/relationships/:id`                                                       | `vessel.manage`                 | Primary flag, start date                                                |
-| `POST /api/v1/relationships/:id/end`                                                    | `vessel.manage`                 | End (`endDate`, default today)                                          |
-| `PUT /api/v1/relationships/:id/fleet`                                                   | `fleet.manage`                  | Put in / move between / remove from the client’s fleets                 |
-| `GET /api/v1/clients/:id/notification-rules`                                            | `client.view`                   | The client's rule per notification event                                |
-| `PUT /api/v1/clients/:id/notification-rules/:event`                                     | `client.manage`                 | Set on/off, contacts and extra emails for one event                     |
-| `GET /api/v1/relationships/:id/settings`                                                | `vessel.view`                   | Resolved billing, contacts and notifications for one vessel–client link |
-| `PUT /api/v1/relationships/:id/billing`                                                 | `vessel.manage`                 | Choose a client billing party for the vessel (`null` = client default)  |
-| `POST /api/v1/relationships/:id/contacts`, `PATCH`/`DELETE /api/v1/vessel-contacts/:id` | `vessel.manage`                 | Vessel-only contacts                                                    |
-| `PUT /api/v1/relationships/:id/client-contacts/:contactId`                              | `vessel.manage`                 | Hide/show a client contact for the vessel                               |
-| `PUT /api/v1/relationships/:id/notifications/:event`                                    | `vessel.manage`                 | Notification override (both parts `null` removes it)                    |
-| `GET /api/v1/clients/:id/vessels`                                                       | `vessel.view`                   | Vessels linked to a client                                              |
-| `GET /api/v1/clients/:id/fleets`                                                        | `vessel.view`                   | A client’s fleets with current vessels                                  |
-| `POST /api/v1/fleets`, `PATCH /api/v1/fleets/:id`, `GET /api/v1/fleets/:id`             | `fleet.manage` / `vessel.view`  | Fleets                                                                  |
-| `GET /api/v1/custom-fields/entities`                                                    | Signed in (tenant)              | Record types available to the organisation                              |
-| `GET /api/v1/custom-fields?entity=client`                                               | Signed in (tenant)              | Field definitions (`view=all` includes inactive)                        |
-| `POST /api/v1/custom-fields`                                                            | `custom-field.manage`           | Define a field                                                          |
-| `PATCH /api/v1/custom-fields/:id`                                                       | `custom-field.manage`           | Edit label, options, required, order, active                            |
+| Method and path                                                                          | Access                          | Purpose                                                                 |
+| ---------------------------------------------------------------------------------------- | ------------------------------- | ----------------------------------------------------------------------- |
+| `POST /api/v1/auth/login`                                                                | Public                          | Sign in; sets the session cookie                                        |
+| `POST /api/v1/auth/logout`                                                               | Public                          | Revoke the session and clear the cookie                                 |
+| `GET /api/v1/auth/me`                                                                    | Signed in                       | Current user                                                            |
+| `POST /api/v1/auth/change-password`                                                      | Signed in                       | Change own password; ends other sessions                                |
+| `GET /api/v1/users`                                                                      | `user.view`                     | List own tenant's users (`page`, `pageSize`, `q`, `status`)             |
+| `POST /api/v1/users`                                                                     | `user.manage`                   | Create a user (optionally with `roleIds`)                               |
+| `GET /api/v1/users/:id`                                                                  | `user.view`                     | Read user                                                               |
+| `PATCH /api/v1/users/:id`                                                                | `user.manage`                   | Update name, email or status                                            |
+| `PUT /api/v1/users/:id/roles`                                                            | `user.manage`                   | Replace the user's roles                                                |
+| `POST /api/v1/users/:id/reset-password`                                                  | `user.manage`                   | Set a new password; ends their sessions                                 |
+| `GET /api/v1/access/catalogue`                                                           | `role.view`                     | Licensed modules, portals and permissions                               |
+| `GET /api/v1/roles`                                                                      | `role.view`                     | List roles (`q`, `isActive`)                                            |
+| `POST /api/v1/roles`                                                                     | `role.manage`                   | Create role with portals, modules, permissions                          |
+| `GET /api/v1/roles/:id`                                                                  | `role.view`                     | Read role and its access                                                |
+| `PATCH /api/v1/roles/:id`                                                                | `role.manage`                   | Name, description, default portal, active                               |
+| `PUT /api/v1/roles/:id/portals`                                                          | `role.manage`                   | Portal Access tab                                                       |
+| `PUT /api/v1/roles/:id/modules`                                                          | `role.manage`                   | Module Access tab                                                       |
+| `PUT /api/v1/roles/:id/permissions`                                                      | `role.manage`                   | Role Permissions tab                                                    |
+| `POST /api/v1/roles/:id/clone`                                                           | `role.manage`                   | Clone with copy options                                                 |
+| `GET /api/v1/roles/:id/users`                                                            | `role.view`                     | Assigned Users tab                                                      |
+| `POST /api/v1/roles/:id/users`                                                           | `user.manage`                   | Assign users                                                            |
+| `DELETE /api/v1/roles/:id/users/:userId`                                                 | `user.manage`                   | Unassign a user                                                         |
+| `GET /api/v1/audit-logs`                                                                 | `audit.view`                    | Audit log (`action`, `entityType`, `entityId`, `actorId`, `from`, `to`) |
+| `GET /api/v1/platform/tenants/:id/audit-logs`                                            | Platform admin                  | Organisation-level history of a tenant                                  |
+| `GET /api/v1/platform/modules`                                                           | Platform admin                  | Module catalogue                                                        |
+| `GET /api/v1/platform/tenants`                                                           | Platform admin                  | List tenants (`q`, `status`)                                            |
+| `POST /api/v1/platform/tenants`                                                          | Platform admin                  | Create tenant + modules + first admin                                   |
+| `GET /api/v1/platform/tenants/:id`                                                       | Platform admin                  | Read tenant                                                             |
+| `PATCH /api/v1/platform/tenants/:id`                                                     | Platform admin                  | Rename, suspend or reactivate                                           |
+| `PUT /api/v1/platform/tenants/:id/modules`                                               | Platform admin                  | Set licensed optional modules                                           |
+| `GET /api/v1/platform/audit-logs`                                                        | Platform admin                  | Platform-level audit entries                                            |
+| `GET/POST /api/v1/platform/reference-data/:list`                                         | Platform admin                  | List / add FLUX defaults                                                |
+| `PATCH /api/v1/platform/reference-data/:list/:id`                                        | Platform admin                  | Edit / deactivate a FLUX default                                        |
+| `GET /api/v1/reference-data`                                                             | Signed in (tenant)              | Lists available to the organisation                                     |
+| `GET /api/v1/reference-data/:list`                                                       | Signed in (tenant)              | Items (`view=usable` default, or `all`)                                 |
+| `POST /api/v1/reference-data/:list`                                                      | `reference-data.manage`         | Add an own item                                                         |
+| `PATCH /api/v1/reference-data/:list/:id`                                                 | `reference-data.manage`         | Edit / deactivate an own item                                           |
+| `PUT /api/v1/reference-data/:list/:id/visibility`                                        | `reference-data.manage`         | Hide or show a FLUX default                                             |
+| `GET /api/v1/clients`                                                                    | `client.view`                   | List (`q`, `status`)                                                    |
+| `POST /api/v1/clients`                                                                   | `client.manage`                 | Create (Client ID generated; `customFields`)                            |
+| `GET /api/v1/clients/:id`                                                                | `client.view`                   | Read with addresses, contacts, billing parties                          |
+| `PATCH /api/v1/clients/:id`                                                              | `client.manage`                 | Update, (de)activate, `customFields`                                    |
+| `POST /api/v1/clients/:id/addresses`                                                     | `client.manage`                 | Add address                                                             |
+| `PATCH/DELETE /api/v1/clients/:id/addresses/:addressId`                                  | `client.manage`                 | Edit / remove address                                                   |
+| `POST /api/v1/clients/:id/contacts`                                                      | `client.manage`                 | Add contact                                                             |
+| `PATCH/DELETE /api/v1/clients/:id/contacts/:contactId`                                   | `client.manage`                 | Edit / remove contact                                                   |
+| `GET /api/v1/clients/:id/billing-parties`                                                | `client.view`                   | Billing Party Grid                                                      |
+| `POST /api/v1/clients/:id/billing-parties`                                               | `client.manage`                 | Billing Party Add                                                       |
+| `PATCH /api/v1/clients/:id/billing-parties/:partyId`                                     | `client.manage`                 | Edit, default, (de)activate                                             |
+| `GET /api/v1/vessels`                                                                    | `vessel.view`                   | List (`q`: name, previous name, IMO, code; `status`; `vesselTypeId`)    |
+| `POST /api/v1/vessels`                                                                   | `vessel.manage`                 | Create (code generated; IMO checked; `customFields`)                    |
+| `GET /api/v1/vessels/:id`                                                                | `vessel.view`                   | Read with type and class society                                        |
+| `PATCH /api/v1/vessels/:id`                                                              | `vessel.manage`                 | Update, (de)activate                                                    |
+| `GET/POST /api/v1/vessels/:id/relationships`                                             | `vessel.view` / `vessel.manage` | List (`status`) / link a client                                         |
+| `PATCH /api/v1/relationships/:id`                                                        | `vessel.manage`                 | Primary flag, start date                                                |
+| `POST /api/v1/relationships/:id/end`                                                     | `vessel.manage`                 | End (`endDate`, default today)                                          |
+| `PUT /api/v1/relationships/:id/fleet`                                                    | `fleet.manage`                  | Put in / move between / remove from the client’s fleets                 |
+| `GET /api/v1/clients/:id/notification-rules`                                             | `client.view`                   | The client's rule per notification event                                |
+| `PUT /api/v1/clients/:id/notification-rules/:event`                                      | `client.manage`                 | Set on/off, contacts and extra emails for one event                     |
+| `GET /api/v1/relationships/:id/settings`                                                 | `vessel.view`                   | Resolved billing, contacts and notifications for one vessel–client link |
+| `PUT /api/v1/relationships/:id/billing`                                                  | `vessel.manage`                 | Choose a client billing party for the vessel (`null` = client default)  |
+| `POST /api/v1/relationships/:id/contacts`, `PATCH`/`DELETE /api/v1/vessel-contacts/:id`  | `vessel.manage`                 | Vessel-only contacts                                                    |
+| `PUT /api/v1/relationships/:id/client-contacts/:contactId`                               | `vessel.manage`                 | Hide/show a client contact for the vessel                               |
+| `PUT /api/v1/relationships/:id/notifications/:event`                                     | `vessel.manage`                 | Notification override (both parts `null` removes it)                    |
+| `GET/POST /api/v1/lab/categories`, `PATCH /api/v1/lab/categories/:id`                    | `lab-setup.view` / `.manage`    | Categories                                                              |
+| `GET/POST /api/v1/lab/service-types`, `GET/PATCH /api/v1/lab/service-types/:id`          | `lab-setup.view` / `.manage`    | Service types (`?view=active&categoryId=&q=`)                           |
+| `POST /api/v1/lab/service-types/:id/fields`, `PATCH /api/v1/lab/registration-fields/:id` | `lab-setup.manage`              | Registration fields                                                     |
+| `POST /api/v1/lab/service-types/:id/registration-check`                                  | `lab-setup.view`                | Validate `{batch, samples[]}` values; saves nothing                     |
+| `GET/POST /api/v1/lab/bottle-types`, `PATCH /api/v1/lab/bottle-types/:id`                | `lab-setup.view` / `.manage`    | Bottle types                                                            |
+| `GET/POST /api/v1/lab/products`, `GET/PATCH /api/v1/lab/products/:id`                    | `lab-setup.view` / `.manage`    | Kits (`?serviceTypeId=&q=`)                                             |
+| `PUT /api/v1/lab/products/:id/bottles`, `PUT /api/v1/lab/variants/:id/bottles`           | `lab-setup.manage`              | Bottle lines (`[]` on a variant = kit's bottles)                        |
+| `POST /api/v1/lab/products/:id/variants`, `PATCH /api/v1/lab/variants/:id`               | `lab-setup.manage`              | Variants                                                                |
+| `POST /api/v1/lab/starter-catalogue`                                                     | `lab-setup.manage`              | Import the FLUX starter catalogue (idempotent)                          |
+| `GET /api/v1/clients/:id/vessels`                                                        | `vessel.view`                   | Vessels linked to a client                                              |
+| `GET /api/v1/clients/:id/fleets`                                                         | `vessel.view`                   | A client’s fleets with current vessels                                  |
+| `POST /api/v1/fleets`, `PATCH /api/v1/fleets/:id`, `GET /api/v1/fleets/:id`              | `fleet.manage` / `vessel.view`  | Fleets                                                                  |
+| `GET /api/v1/custom-fields/entities`                                                     | Signed in (tenant)              | Record types available to the organisation                              |
+| `GET /api/v1/custom-fields?entity=client`                                                | Signed in (tenant)              | Field definitions (`view=all` includes inactive)                        |
+| `POST /api/v1/custom-fields`                                                             | `custom-field.manage`           | Define a field                                                          |
+| `PATCH /api/v1/custom-fields/:id`                                                        | `custom-field.manage`           | Edit label, options, required, order, active                            |
 
 ## Database conventions
 
