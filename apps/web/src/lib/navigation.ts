@@ -60,6 +60,7 @@ export const NAVIGATION: NavGroup[] = [
         icon: 'queue',
         permission: 'receiving.view',
       },
+      { href: '/lab/testing', label: 'Under testing', icon: 'flask', permission: 'sample.view' },
       { href: '/lab/batches', label: 'Batches', icon: 'batch', permission: 'sample.view' },
       { href: '/lab/samples', label: 'Samples', icon: 'sample', permission: 'sample.view' },
     ],

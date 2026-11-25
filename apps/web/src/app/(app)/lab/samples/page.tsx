@@ -5,6 +5,7 @@ import { DataTable } from '@/components/data-table';
 import { Forbidden } from '@/components/forbidden';
 import { PageHeader } from '@/components/page-header';
 import { Pagination, readParams } from '@/components/pagination';
+import { FlagBadge } from '@/components/results';
 import { SampleStatusBadge } from '@/components/sample-status';
 import { loadOrNotFound, sessionWithPermission } from '@/lib/server-api';
 
@@ -93,6 +94,7 @@ export default async function SamplesPage({
               header: 'Status',
               cell: (s) => <SampleStatusBadge status={s.status} colour={s.colour} />,
             },
+            { header: 'Flag', cell: (s) => <FlagBadge flag={s.worstFlag} /> },
           ]}
         />
         <Pagination meta={meta as PageMeta} basePath="/lab/samples" params={params} />

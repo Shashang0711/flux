@@ -1,5 +1,10 @@
 import { HttpStatus } from '@nestjs/common';
-import { Prisma, type BottleType, type RegistrationField } from '@prisma/client';
+import {
+  Prisma,
+  type BottleType,
+  type RegistrationField,
+  type TestParameter,
+} from '@prisma/client';
 import {
   ErrorCode,
   type BottleLineDto,
@@ -9,6 +14,7 @@ import {
   type RegistrationFieldDto,
   type ServiceTypeDto,
   type ServiceTypeSummaryDto,
+  type TestParameterDto,
 } from '@flux/shared';
 import { AppException } from '../../common/errors/app.exception';
 
@@ -63,6 +69,33 @@ export function toFieldDto(f: RegistrationField): RegistrationFieldDto {
   };
 }
 
+// ─── Test parameters ────────────────────────────────────────────────────────
+
+export const PARAMETER_ORDER: Prisma.TestParameterOrderByWithRelationInput[] = [
+  { sortOrder: 'asc' },
+  { name: 'asc' },
+];
+
+export function toParameterDto(p: TestParameter): TestParameterDto {
+  return {
+    id: p.id,
+    key: p.key,
+    name: p.name,
+    unit: p.unit,
+    type: p.type,
+    decimals: p.decimals,
+    method: p.method,
+    options: p.options as string[],
+    cautionMin: p.cautionMin,
+    cautionMax: p.cautionMax,
+    criticalMin: p.criticalMin,
+    criticalMax: p.criticalMax,
+    required: p.required,
+    sortOrder: p.sortOrder,
+    isActive: p.isActive,
+  };
+}
+
 // ─── Service types ──────────────────────────────────────────────────────────
 
 export const SERVICE_TYPE_SUMMARY_INCLUDE = {
@@ -73,6 +106,7 @@ export const SERVICE_TYPE_SUMMARY_INCLUDE = {
 export const SERVICE_TYPE_DETAIL_INCLUDE = {
   ...SERVICE_TYPE_SUMMARY_INCLUDE,
   fields: { orderBy: FIELD_ORDER },
+  parameters: { orderBy: PARAMETER_ORDER },
   products: { include: { product: REF }, orderBy: { product: { name: 'asc' } } },
 } satisfies Prisma.ServiceTypeInclude;
 
@@ -102,6 +136,7 @@ export function toServiceTypeDto(s: ServiceTypeDetailRow): ServiceTypeDto {
     ...toServiceTypeSummaryDto(s),
     description: s.description,
     fields: s.fields.map(toFieldDto),
+    parameters: s.parameters.map(toParameterDto),
     products: s.products.map((p) => p.product),
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),

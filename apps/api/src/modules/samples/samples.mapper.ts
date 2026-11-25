@@ -1,6 +1,8 @@
 import type { Prisma } from '@prisma/client';
 import {
   sampleColour,
+  worstFlag,
+  type SampleStatus,
   type BatchSummaryDto,
   type CustomFieldValues,
   type SampleSummaryDto,
@@ -23,6 +25,7 @@ export const SAMPLE_INCLUDE = {
       airwayBill: { select: { id: true, number: true } },
     },
   },
+  results: { select: { flag: true } },
 } satisfies Prisma.SampleInclude;
 
 export type SampleRow = Prisma.SampleGetPayload<{ include: typeof SAMPLE_INCLUDE }>;
@@ -34,6 +37,7 @@ export function toSampleSummaryDto(s: SampleRow): SampleSummaryDto {
     code: s.code,
     status: s.status,
     colour: sampleColour(s),
+    worstFlag: worstFlag(s.results.map((r) => r.flag)),
     batch: s.batch,
     serviceType: s.serviceType,
     client: s.client,
@@ -47,6 +51,7 @@ export const BATCH_SUMMARY_INCLUDE = {
   serviceType: REF,
   registeredBy: { select: { name: true } },
   _count: { select: { samples: true } },
+  samples: { select: { status: true } },
 } satisfies Prisma.RegistrationBatchInclude;
 
 export type BatchSummaryRow = Prisma.RegistrationBatchGetPayload<{
@@ -59,6 +64,10 @@ export function toBatchSummaryDto(b: BatchSummaryRow): BatchSummaryDto {
     code: b.code,
     serviceType: b.serviceType,
     sampleCount: b._count.samples,
+    statusCounts: b.samples.reduce<Record<SampleStatus, number>>(
+      (acc, s) => ({ ...acc, [s.status]: acc[s.status] + 1 }),
+      { REGISTERED: 0, UNDER_TESTING: 0, RESULTS_ENTERED: 0 },
+    ),
     registeredAt: b.registeredAt.toISOString(),
     registeredBy: b.registeredBy?.name ?? null,
   };

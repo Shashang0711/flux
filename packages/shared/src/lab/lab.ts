@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { TestParameterDto } from '../testing/testing';
 import {
   CUSTOM_FIELD_TYPE_KEYS,
   customFieldKeyFromLabel,
@@ -66,6 +67,8 @@ export interface ServiceTypeDto extends ServiceTypeSummaryDto {
   description: string | null;
   /** In display order: batch fields first, then sample fields. */
   fields: RegistrationFieldDto[];
+  /** Test parameters (results), in order. */
+  parameters: TestParameterDto[];
   products: (LabRef & { isActive: boolean })[];
   createdAt: string;
   updatedAt: string;
@@ -107,7 +110,13 @@ export interface ProductDto extends ProductSummaryDto {
 }
 
 export interface StarterImportResultDto {
-  created: { categories: number; serviceTypes: number; bottleTypes: number; products: number };
+  created: {
+    categories: number;
+    serviceTypes: number;
+    parameters: number;
+    bottleTypes: number;
+    products: number;
+  };
   /** Items skipped because their code already exists. */
   skipped: number;
 }

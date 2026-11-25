@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { STATE } from './fixtures';
 
 test.use({ storageState: STATE.owner });
@@ -305,4 +305,85 @@ test('receive & register a package in one step', async ({ page }, info) => {
   await page.goto(`/lab/receiving?q=${tag}`);
   await expect(page.locator('main tbody tr')).toHaveCount(1);
   await expect(page.locator('main tbody tr')).toContainText('2');
+});
+
+/** A fresh Ballast Water batch on Aegean Star, created through the API. */
+async function ballastBatch(page: Page, tag: string, kits = 2) {
+  const api = page.request;
+  const options = (await (await api.get('/api/v1/samples/receive-register-options')).json()).data;
+  const bwk = options.kits.find((k: { code: string }) => k.code === 'BWK');
+  const bw = options.serviceTypes.find((s: { code: string }) => s.code === 'BW');
+  const vessel = options.vessels.find((v: { name: string }) => v.name === 'Aegean Star');
+  const res = await api.post('/api/v1/samples/receive-and-register', {
+    data: {
+      airwayBill: { number: tag },
+      serviceTypeId: bw.id,
+      samples: Array.from({ length: kits }, (_, i) => ({
+        productId: bwk.id,
+        variantId: bwk.variants[0].id,
+        vesselId: vessel.id,
+        serialNumber: `${tag}-${i + 1}`,
+        values: { sampling_point: 'intake', date_sampled: '2026-11-20' },
+      })),
+    },
+  });
+  expect(res.ok()).toBe(true);
+  return (await res.json()).data as {
+    id: string;
+    code: string;
+    samples: { id: string; code: string }[];
+  };
+}
+
+test('enter results for one sample, see the flags, complete and lock', async ({ page }, info) => {
+  const batch = await ballastBatch(
+    page,
+    `T${info.project.name.slice(0, 1).toUpperCase()}${Date.now().toString(36).toUpperCase()}`,
+    1,
+  );
+  await page.goto(`/lab/samples/${batch.samples[0]!.id}`);
+  const results = page.locator('#results');
+  await results.getByLabel('Viable organisms ≥ 50 µm *').fill('12');
+  await results.getByLabel('Viable organisms 10–50 µm *').fill('1');
+  await results.getByLabel('E. coli *').fill('100');
+  await results.getByLabel('Intestinal Enterococci *').fill('60');
+  await results.getByLabel('Toxicogenic Vibrio cholerae *').selectOption('pass');
+  await results.getByRole('button', { name: 'Save results' }).click();
+  await expect(results.getByText('Results saved.')).toBeVisible();
+  await expect(results.getByText('Critical').first()).toBeVisible();
+  await expect(results.getByText('Caution')).toBeVisible();
+  await expect(page.locator('main').getByText('Under testing').first()).toBeVisible();
+
+  await results.getByRole('button', { name: 'Complete results' }).click();
+  await expect(results.getByRole('button', { name: 'Reopen to correct' })).toBeVisible();
+  await expect(results.getByLabel('E. coli *')).toBeDisabled();
+});
+
+test('upload batch results from a CSV, preview the flags, then save', async ({ page }, info) => {
+  const batch = await ballastBatch(
+    page,
+    `C${info.project.name.slice(0, 1).toUpperCase()}${Date.now().toString(36).toUpperCase()}`,
+  );
+  const [a, b] = batch.samples;
+  const csv = [
+    'sample,org_50,org_10_50,e_coli,enterococci,v_cholerae,colour',
+    `${a!.code},2,1,10,5,pass,blue`,
+    `${b!.code},40,1,10,5,fail,green`,
+  ].join('\n');
+  await page.goto(`/lab/batches/${batch.id}/results`);
+  await page.getByLabel('CSV file with results').setInputFiles({
+    name: 'results.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(csv),
+  });
+  const preview = page.getByRole('region', { name: 'Import preview' });
+  await expect(preview).toBeVisible();
+  await expect(preview.getByText('Critical').first()).toBeVisible();
+  await expect(page.getByText('Ignored columns: colour')).toBeVisible();
+  await preview.getByRole('button', { name: 'Save imported results' }).click();
+  await expect(preview).toBeHidden();
+
+  const grid = page.getByRole('table', { name: 'Results' });
+  await expect(grid.getByLabel(`Viable organisms ≥ 50 µm for ${b!.code}`)).toHaveValue('40');
+  await expect(grid.locator('tbody tr').nth(1)).toContainText('Critical');
 });

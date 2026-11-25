@@ -1,4 +1,226 @@
-import type { CustomFieldType, RegistrationFieldScope } from '@prisma/client';
+import type { CustomFieldType, ParameterType, RegistrationFieldScope } from '@prisma/client';
+
+/** A starter test parameter; limits bound the acceptable range (outside = flagged). */
+export interface StarterParameter {
+  key: string;
+  name: string;
+  unit?: string;
+  type: ParameterType;
+  decimals?: number;
+  method?: string;
+  options?: string[];
+  cautionMin?: number;
+  cautionMax?: number;
+  criticalMin?: number;
+  criticalMax?: number;
+  required?: boolean;
+}
+
+/**
+ * Typical parameters per starter service type. Ballast water follows the IMO D-2 standard
+ * (e.g. fewer than 10 viable organisms ≥ 50 µm per m³); others are common marine practice.
+ * Every lab should review limits against its own methods and contracts.
+ */
+export const STARTER_PARAMETERS: Record<string, StarterParameter[]> = {
+  BW: [
+    {
+      key: 'org_50',
+      name: 'Viable organisms ≥ 50 µm',
+      unit: 'per m³',
+      type: 'NUMBER',
+      decimals: 0,
+      cautionMax: 5,
+      criticalMax: 9,
+      required: true,
+    },
+    {
+      key: 'org_10_50',
+      name: 'Viable organisms 10–50 µm',
+      unit: 'per ml',
+      type: 'NUMBER',
+      decimals: 0,
+      cautionMax: 5,
+      criticalMax: 9,
+      required: true,
+    },
+    {
+      key: 'e_coli',
+      name: 'E. coli',
+      unit: 'cfu/100 ml',
+      type: 'NUMBER',
+      decimals: 0,
+      cautionMax: 125,
+      criticalMax: 249,
+      required: true,
+    },
+    {
+      key: 'enterococci',
+      name: 'Intestinal Enterococci',
+      unit: 'cfu/100 ml',
+      type: 'NUMBER',
+      decimals: 0,
+      cautionMax: 50,
+      criticalMax: 99,
+      required: true,
+    },
+    { key: 'v_cholerae', name: 'Toxicogenic Vibrio cholerae', type: 'PASS_FAIL', required: true },
+  ],
+  PW: [
+    {
+      key: 'e_coli',
+      name: 'E. coli',
+      unit: 'cfu/100 ml',
+      type: 'NUMBER',
+      decimals: 0,
+      criticalMax: 0,
+      required: true,
+    },
+    {
+      key: 'coliforms',
+      name: 'Total coliforms',
+      unit: 'cfu/100 ml',
+      type: 'NUMBER',
+      decimals: 0,
+      criticalMax: 0,
+      required: true,
+    },
+    {
+      key: 'ph',
+      name: 'pH',
+      type: 'NUMBER',
+      decimals: 1,
+      cautionMin: 6.5,
+      cautionMax: 9.5,
+      criticalMin: 6,
+      criticalMax: 10,
+    },
+    {
+      key: 'free_chlorine',
+      name: 'Free chlorine',
+      unit: 'mg/l',
+      type: 'NUMBER',
+      decimals: 2,
+      cautionMin: 0.2,
+      cautionMax: 5,
+    },
+  ],
+  GW: [
+    {
+      key: 'thermo_coliforms',
+      name: 'Thermotolerant coliforms',
+      unit: 'cfu/100 ml',
+      type: 'NUMBER',
+      decimals: 0,
+      cautionMax: 50,
+      criticalMax: 100,
+      required: true,
+    },
+    {
+      key: 'tss',
+      name: 'Total suspended solids',
+      unit: 'mg/l',
+      type: 'NUMBER',
+      decimals: 0,
+      cautionMax: 25,
+      criticalMax: 35,
+    },
+    {
+      key: 'ph',
+      name: 'pH',
+      type: 'NUMBER',
+      decimals: 1,
+      cautionMin: 6.5,
+      cautionMax: 8.5,
+      criticalMin: 6,
+      criticalMax: 9,
+    },
+  ],
+  LO: [
+    {
+      key: 'viscosity_40',
+      name: 'Viscosity at 40 °C',
+      unit: 'cSt',
+      type: 'NUMBER',
+      decimals: 1,
+      method: 'ASTM D445',
+      cautionMin: 90,
+      cautionMax: 110,
+      criticalMin: 80,
+      criticalMax: 120,
+      required: true,
+    },
+    {
+      key: 'water',
+      name: 'Water content',
+      unit: '%',
+      type: 'NUMBER',
+      decimals: 2,
+      method: 'ASTM D6304',
+      cautionMax: 0.2,
+      criticalMax: 0.5,
+      required: true,
+    },
+    {
+      key: 'iron',
+      name: 'Iron (Fe)',
+      unit: 'ppm',
+      type: 'NUMBER',
+      decimals: 0,
+      method: 'ASTM D5185',
+      cautionMax: 50,
+      criticalMax: 100,
+    },
+    {
+      key: 'appearance',
+      name: 'Appearance',
+      type: 'CHOICE',
+      options: ['Clear', 'Hazy', 'Dark', 'Emulsified'],
+    },
+  ],
+  FO: [
+    {
+      key: 'density_15',
+      name: 'Density at 15 °C',
+      unit: 'kg/m³',
+      type: 'NUMBER',
+      decimals: 1,
+      method: 'ISO 12185',
+      criticalMax: 991,
+      required: true,
+    },
+    {
+      key: 'viscosity_50',
+      name: 'Viscosity at 50 °C',
+      unit: 'cSt',
+      type: 'NUMBER',
+      decimals: 1,
+      method: 'ISO 3104',
+      criticalMax: 380,
+      required: true,
+    },
+    {
+      key: 'sulphur',
+      name: 'Sulphur',
+      unit: '% m/m',
+      type: 'NUMBER',
+      decimals: 2,
+      method: 'ISO 8754',
+      cautionMax: 0.45,
+      criticalMax: 0.5,
+      required: true,
+    },
+    {
+      key: 'water',
+      name: 'Water',
+      unit: '% V/V',
+      type: 'NUMBER',
+      decimals: 2,
+      method: 'ISO 3733',
+      cautionMax: 0.3,
+      criticalMax: 0.5,
+    },
+  ],
+};
 
 /**
  * FLUX starter catalogue (design pack §7 examples). Imported as a copy the lab then owns and

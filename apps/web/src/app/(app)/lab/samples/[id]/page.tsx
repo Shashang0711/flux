@@ -1,19 +1,24 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import type { SampleDto } from '@flux/shared';
+import type { SampleDto, SampleResultsDto } from '@flux/shared';
 import { FieldValues } from '@/components/field-values';
 import { Forbidden } from '@/components/forbidden';
 import { PageHeader } from '@/components/page-header';
 import { SampleStatusBadge } from '@/components/sample-status';
 import { loadOrNotFound, sessionWithPermission } from '@/lib/server-api';
+import { FlagBadge } from '@/components/results';
+import { SampleResults } from './sample-results';
 
 export const metadata: Metadata = { title: 'Sample · FLUX' };
 
 export default async function SamplePage({ params }: { params: Promise<{ id: string }> }) {
-  const { allowed } = await sessionWithPermission('sample.view');
+  const { session, allowed } = await sessionWithPermission('sample.view');
   if (!allowed) return <Forbidden />;
   const { id } = await params;
-  const { data: s } = await loadOrNotFound<SampleDto>(`/samples/${id}`);
+  const [{ data: s }, { data: results }] = await Promise.all([
+    loadOrNotFound<SampleDto>(`/samples/${id}`),
+    loadOrNotFound<SampleResultsDto>(`/samples/${id}/results`),
+  ]);
   return (
     <>
       <PageHeader
@@ -21,6 +26,7 @@ export default async function SamplePage({ params }: { params: Promise<{ id: str
         description={
           <span className="row">
             <SampleStatusBadge status={s.status} colour={s.colour} />
+            <FlagBadge flag={s.worstFlag} />
             <span>{s.serviceType.name}</span>
           </span>
         }
@@ -73,6 +79,13 @@ export default async function SamplePage({ params }: { params: Promise<{ id: str
               </dd>
             </div>
           </dl>
+        </section>
+        <section className="card" id="results">
+          <h2 className="card-title">Results</h2>
+          <SampleResults
+            data={results}
+            canTest={session.access.permissions.includes('sample.test')}
+          />
         </section>
         <section className="card">
           <h2 className="card-title">Registration details</h2>

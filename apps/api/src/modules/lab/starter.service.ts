@@ -6,6 +6,7 @@ import { labAudit } from './catalogue.service';
 import {
   STARTER_BOTTLE_TYPES,
   STARTER_CATEGORIES,
+  STARTER_PARAMETERS,
   STARTER_PRODUCTS,
   STARTER_SERVICE_TYPES,
 } from './starter-catalogue';
@@ -21,7 +22,13 @@ export class StarterService {
   import(ctx: TenantContext, actor: AuthUser): Promise<StarterImportResultDto> {
     return this.db.run(ctx.tenantId, async (tx) => {
       const tenantId = ctx.tenantId;
-      const created = { categories: 0, serviceTypes: 0, bottleTypes: 0, products: 0 };
+      const created = {
+        categories: 0,
+        serviceTypes: 0,
+        parameters: 0,
+        bottleTypes: 0,
+        products: 0,
+      };
       let skipped = 0;
 
       const categories = new Map<string, string>();
@@ -74,6 +81,42 @@ export class StarterService {
         });
         serviceTypes.set(s.code, row.id);
         created.serviceTypes++;
+      }
+
+      // Test parameters: missing ones are added, also to service types that already existed.
+      for (const [code, params] of Object.entries(STARTER_PARAMETERS)) {
+        const serviceTypeId = serviceTypes.get(code);
+        if (!serviceTypeId) continue;
+        const have = await tx.testParameter.findMany({
+          where: { serviceTypeId },
+          select: { key: true },
+        });
+        for (const [i, p] of params.entries()) {
+          if (have.some((h) => h.key === p.key)) {
+            skipped++;
+            continue;
+          }
+          await tx.testParameter.create({
+            data: {
+              tenantId,
+              serviceTypeId,
+              key: p.key,
+              name: p.name,
+              unit: p.unit ?? null,
+              type: p.type,
+              decimals: p.decimals ?? null,
+              method: p.method ?? null,
+              options: p.options ?? [],
+              cautionMin: p.cautionMin ?? null,
+              cautionMax: p.cautionMax ?? null,
+              criticalMin: p.criticalMin ?? null,
+              criticalMax: p.criticalMax ?? null,
+              required: p.required ?? false,
+              sortOrder: (i + 1) * 10,
+            },
+          });
+          created.parameters++;
+        }
       }
 
       const bottles = new Map<string, string>();
@@ -135,6 +178,7 @@ export class StarterService {
           {
             categories: { from: null, to: created.categories },
             serviceTypes: { from: null, to: created.serviceTypes },
+            parameters: { from: null, to: created.parameters },
             bottleTypes: { from: null, to: created.bottleTypes },
             kits: { from: null, to: created.products },
           },
