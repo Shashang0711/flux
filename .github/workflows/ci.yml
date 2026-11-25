@@ -43,7 +43,9 @@ jobs:
   browser:
     # Real browser checks: every page at phone/tablet/desktop widths (no sideways scrolling,
     # content above the fold), the menu drawer, and core flows. See apps/web/e2e.
-    runs-on: ubuntu-latest
+    # Pinned: Playwright installs browser dependencies only on Ubuntu releases it supports
+    # (1.56 does not support 26.04, which ubuntu-latest now is). Move on when Playwright is upgraded.
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine
