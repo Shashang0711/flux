@@ -71,6 +71,9 @@ model Tenant {
   productBottles                           ProductBottle[]
   variantBottles                           VariantBottle[]
 
+  airwayBills  AirwayBill[]
+  receivedKits ReceivedKit[]
+
   @@map("tenants")
 }
 
@@ -113,6 +116,8 @@ model User {
   userRoles UserRole[]
 
   /// Target for composite foreign keys that pin child rows to the same tenant.
+  receivedKits ReceivedKit[]
+
   @@unique([id, tenantId])
   @@index([tenantId])
   @@map("users")
@@ -382,6 +387,8 @@ model Client {
   vesselOverrideContacts       VesselNotificationOverrideContact[]
   vesselOverrideVesselContacts VesselNotificationOverrideVesselContact[]
 
+  receivedKits ReceivedKit[]
+
   @@unique([tenantId, code])
   @@unique([id, tenantId])
   @@index([tenantId, name])
@@ -545,6 +552,8 @@ model Vessel {
   classificationSociety ReferenceItem? @relation("VesselClass", fields: [classificationSocietyId, classificationSocietyList], references: [id, listKey], onDelete: Restrict)
 
   relationships VesselClientRelationship[]
+
+  receivedKits ReceivedKit[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, imoNumber])
@@ -865,6 +874,8 @@ model ServiceType {
   fields   RegistrationField[]
   products ProductServiceType[]
 
+  receivedKits ReceivedKit[]
+
   @@unique([tenantId, code])
   @@unique([id, tenantId])
   @@index([categoryId])
@@ -933,6 +944,8 @@ model Product {
   variants     ProductVariant[]
   bottles      ProductBottle[]
 
+  receivedKits ReceivedKit[]
+
   @@unique([tenantId, code])
   @@unique([id, tenantId])
   @@map("products")
@@ -967,6 +980,10 @@ model ProductVariant {
   product Product         @relation(fields: [productId, tenantId], references: [id, tenantId], onDelete: Restrict)
   bottles VariantBottle[]
 
+  receivedKits ReceivedKit[]
+
+  /// Target for received_kits, pinning a variant to the received kit's product.
+  @@unique([id, productId])
   @@unique([productId, code])
   @@unique([id, tenantId])
   @@map("product_variants")
@@ -1004,4 +1021,89 @@ model VariantBottle {
   @@unique([variantId, bottleTypeId])
   @@index([bottleTypeId])
   @@map("variant_bottle_configs")
+}
+
+// ─── Receiving (M10) ────────────────────────────────────────────────────────
+// Design pack §8 Bulk Receiving: an Airway Bill (the shipment) and the kits received under it,
+// one by one. A kit waits in the registration queue until it is registered (M11).
+
+enum AirwayBillStatus {
+  OPEN
+  CLOSED
+}
+
+enum KitCondition {
+  OK
+  DAMAGED
+  LEAKING
+  INCOMPLETE
+}
+
+enum ReceivedKitStatus {
+  PENDING_REGISTRATION
+  REGISTERED
+  CANCELLED
+}
+
+model AirwayBill {
+  id         String           @id @default(uuid()) @db.Uuid
+  tenantId   String           @map("tenant_id") @db.Uuid
+  /// Normalised: upper case, no spaces. Unique per tenant.
+  number     String
+  courier    String?
+  origin     String?
+  receivedOn DateTime         @map("received_on") @db.Date
+  notes      String?
+  status     AirwayBillStatus @default(OPEN)
+  closedAt   DateTime?        @map("closed_at")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  kits   ReceivedKit[]
+
+  @@unique([tenantId, number])
+  @@unique([id, tenantId])
+  @@index([tenantId, status])
+  @@map("airway_bills")
+}
+
+model ReceivedKit {
+  id             String            @id @default(uuid()) @db.Uuid
+  tenantId       String            @map("tenant_id") @db.Uuid
+  /// Generated per tenant: RK-000001.
+  code           String
+  airwayBillId   String            @map("airway_bill_id") @db.Uuid
+  productId      String            @map("product_id") @db.Uuid
+  variantId      String?           @map("variant_id") @db.Uuid
+  /// Printed on the kit; unique per tenant among kits that are not cancelled (partial index).
+  serialNumber   String?           @map("serial_number")
+  serviceTypeId  String?           @map("service_type_id") @db.Uuid
+  clientId       String?           @map("client_id") @db.Uuid
+  vesselId       String?           @map("vessel_id") @db.Uuid
+  condition      KitCondition      @default(OK)
+  conditionNotes String?           @map("condition_notes")
+  status         ReceivedKitStatus @default(PENDING_REGISTRATION)
+  cancelReason   String?           @map("cancel_reason")
+  receivedAt     DateTime          @default(now()) @map("received_at")
+  receivedById   String?           @map("received_by_id") @db.Uuid
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  airwayBill  AirwayBill      @relation(fields: [airwayBillId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  product     Product         @relation(fields: [productId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  variant     ProductVariant? @relation(fields: [variantId, productId], references: [id, productId], onDelete: Restrict, onUpdate: NoAction)
+  serviceType ServiceType?    @relation(fields: [serviceTypeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  client      Client?         @relation(fields: [clientId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  vessel      Vessel?         @relation(fields: [vesselId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  receivedBy  User?           @relation(fields: [receivedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, code])
+  @@unique([id, tenantId])
+  @@index([tenantId, status])
+  @@index([airwayBillId])
+  @@index([vesselId])
+  @@index([clientId])
+  @@map("received_kits")
 }

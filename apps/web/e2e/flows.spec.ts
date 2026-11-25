@@ -162,3 +162,46 @@ test('create a kit with bottles and a variant', async ({ page }, info) => {
   await expect(row).toContainText('Same as the kit');
   await expect(row).toContainText('2 ×');
 });
+
+test('receive kits scanner-style, then find them in the registration queue', async ({
+  page,
+}, info) => {
+  const tag = `${info.project.name.slice(0, 1).toUpperCase()}${Date.now().toString(36).toUpperCase()}`;
+  await page.goto('/lab/receiving/new');
+  await page.getByLabel('AWB number').fill(`E2E-${tag}`);
+  await page.getByLabel('Courier').fill('FedEx');
+  await page.getByRole('button', { name: 'Start receiving' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: `AWB E2E-${tag}` })).toBeVisible();
+
+  await page.getByLabel('Kit', { exact: true }).selectOption({ label: 'Ballast Water Kit' });
+  await page.getByLabel('Variant').selectOption({ label: 'UV' });
+  await page.getByLabel('Vessel').selectOption({ label: 'Aegean Star · IMO 9074729' });
+  await expect(page.getByLabel('Client')).not.toHaveValue('');
+
+  // A scanner types the serial and presses Enter; the selections stay for the next kit.
+  const serial = page.getByLabel('Serial number');
+  await serial.fill(`${tag}-1`);
+  await serial.press('Enter');
+  await expect(page.getByText(/Received RK-\d{6} \(.*-1\)/)).toBeVisible();
+  await expect(serial).toBeFocused();
+  await serial.fill(`${tag}-2`);
+  await serial.press('Enter');
+  await expect(page.getByText(/Received RK-\d{6} \(.*-2\)/)).toBeVisible();
+  await serial.fill(`${tag}-2`);
+  await serial.press('Enter');
+  await expect(page.getByText(/already received as RK-/).first()).toBeVisible();
+
+  const rows = page.locator('main tbody tr');
+  await expect(rows).toHaveCount(2);
+  const second = rows.filter({ hasText: `${tag}-2` });
+  await second.getByRole('button', { name: 'Cancel' }).click();
+  const dialog = page.getByRole('dialog', { name: /^Cancel RK-/ });
+  await dialog.getByLabel('Reason').fill('Scanned twice');
+  await dialog.getByRole('button', { name: 'Cancel kit' }).click();
+  await expect(second).toContainText('Cancelled');
+
+  await page.goto(`/lab/registration-queue?q=${tag}`);
+  await expect(page.locator('main tbody tr')).toHaveCount(1);
+  await expect(page.locator('main tbody tr')).toContainText(`${tag}-1`);
+  await expect(page.locator('main tbody tr')).toContainText('Aegean Star');
+});

@@ -447,6 +447,8 @@ code {
 /* ─── Tables (DataTable stacks rows into cards on phones) ────────────────── */
 
 .table-wrap {
+  /* Positioned, so visually hidden header text (.sr-only) is clipped with the table. */
+  position: relative;
   overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -495,6 +497,12 @@ code {
 /* Space between action buttons (dialogs sit between them in the DOM and are skipped). */
 .table .cell-actions > :not(dialog) ~ :not(dialog) {
   margin-left: 6px;
+}
+
+/* Rows that are kept for history only (cancelled, inactive…). */
+.table tr.row-muted > td {
+  color: var(--muted);
+  background: var(--surface-2);
 }
 
 /* A muted second line under a name (table cells, checkbox labels…). */
@@ -577,7 +585,8 @@ code {
   }
 
   .table-stack .table td > select,
-  .table-stack .table td > .select {
+  .table-stack .table td > .select,
+  .table-stack .table td > .cell-value:has(> .select) {
     justify-self: stretch;
   }
 

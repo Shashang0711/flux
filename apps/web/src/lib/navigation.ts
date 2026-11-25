@@ -43,7 +43,19 @@ export const NAVIGATION: NavGroup[] = [
     ],
   },
   {
-    label: 'Laboratory',
+    label: 'Samples',
+    items: [
+      { href: '/lab/receiving', label: 'Receiving', icon: 'inbox', permission: 'receiving.view' },
+      {
+        href: '/lab/registration-queue',
+        label: 'Registration queue',
+        icon: 'queue',
+        permission: 'receiving.view',
+      },
+    ],
+  },
+  {
+    label: 'Lab setup',
     items: [
       {
         href: '/admin/lab/service-types',

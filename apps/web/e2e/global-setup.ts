@@ -19,7 +19,7 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
     data: {
       name: 'Oceanic Testing Ltd',
       slug: 'oceanic-e2e',
-      modules: ['clients', 'vessels', 'lab-setup', 'samples', 'reports'],
+      modules: ['clients', 'vessels', 'lab-setup', 'receiving', 'samples', 'reports'],
       admin: { name: 'Owen Owner', email: OWNER.email, password: OWNER.password },
     },
   });
@@ -116,6 +116,30 @@ async function seed(api: Api): Promise<void> {
           fleetId: fleet.id,
         },
       },
+    }),
+  );
+  // Receiving: one AWB with a vessel-linked kit and an unlinked, damaged one.
+  const options = await json(await api.get('/api/v1/receiving/options'));
+  const kit = (code: string) => options.kits.find((k: { code: string }) => k.code === code);
+  const awb = await json(
+    await api.post('/api/v1/receiving/airway-bills', {
+      data: { number: 'SEED-0001', courier: 'DHL', origin: 'Singapore' },
+    }),
+  );
+  const vesselId = options.vessels.find((v: { name: string }) => v.name === 'Aegean Star').id;
+  await json(
+    await api.post(`/api/v1/receiving/airway-bills/${awb.id}/kits`, {
+      data: {
+        productId: kit('BWK').id,
+        variantId: kit('BWK').variants[0].id,
+        serialNumber: 'SEED-BW-1',
+        vesselId,
+      },
+    }),
+  );
+  await json(
+    await api.post(`/api/v1/receiving/airway-bills/${awb.id}/kits`, {
+      data: { productId: kit('LOK').id, condition: 'LEAKING', conditionNotes: 'Cap loose' },
     }),
   );
 }
