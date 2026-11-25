@@ -60,7 +60,13 @@ export function DataTable<T>({
                     data-primary={c.primary ? '' : undefined}
                     className={c.actions ? 'cell-actions' : c.className}
                   >
-                    {c.cell(row)}
+                    {c.actions || c.primary ? (
+                      c.cell(row)
+                    ) : (
+                      // One element per cell, so stacked phone cards keep the value (and any
+                      // second line or badge) together in the value column.
+                      <div className="cell-value">{c.cell(row)}</div>
+                    )}
                   </td>
                 ))}
               </tr>

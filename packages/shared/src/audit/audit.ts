@@ -78,6 +78,13 @@ export const AUDIT_ACTIONS = {
   'lab.variant_updated': 'Kit variant updated',
   'lab.variant_bottles_changed': 'Variant bottles changed',
   'lab.starter_imported': 'Starter catalogue imported',
+  'receiving.awb_created': 'Airway bill created',
+  'receiving.awb_updated': 'Airway bill updated',
+  'receiving.awb_closed': 'Airway bill closed',
+  'receiving.awb_reopened': 'Airway bill reopened',
+  'receiving.kit_received': 'Kit received',
+  'receiving.kit_updated': 'Received kit updated',
+  'receiving.kit_cancelled': 'Received kit cancelled',
   'fleet.created': 'Fleet created',
   'fleet.updated': 'Fleet updated',
   'fleet.activated': 'Fleet activated',
@@ -100,6 +107,8 @@ export const AUDIT_ENTITY_TYPES = [
   'service-type',
   'bottle-type',
   'product',
+  'airway-bill',
+  'received-kit',
 ] as const;
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
 
