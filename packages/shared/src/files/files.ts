@@ -25,6 +25,7 @@ export type FileKind = keyof typeof FILE_KINDS;
 
 export const FILE_PURPOSES = {
   LAB_REPORT: { kinds: ['pdf'] as FileKind[], name: 'Lab report' },
+  FINAL_REPORT: { kinds: ['pdf'] as FileKind[], name: 'Final report' },
   RESULT_ATTACHMENT: {
     kinds: ['pdf', 'png', 'jpeg', 'csv', 'xlsx', 'xls'] as FileKind[],
     name: 'Result attachment',

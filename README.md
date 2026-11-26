@@ -145,6 +145,7 @@ renders the shell: a sidebar built from `lib/navigation.ts`, showing only what t
 | `/lab/batches/:id/results`       | `sample.view` (`sample.test` to edit)   | Results grid, CSV template download and upload with preview                                           |
 | `/lab/reports/...`               | `report.view`                           | Lab reports: list, versions, download, replace file; upload from the batch page                       |
 | `/lab/review`                    | `report.review`                         | Report review: reports awaiting a decision                                                            |
+| `/lab/publish`                   | `report.publish`                        | Reports ready to publish; publish from the report page                                                |
 | `/admin/audit`                   | `audit.view`                            | Audit log with filters                                                                                |
 | `/platform/reference-data`       | Platform admins                         | Manage FLUX default reference data                                                                    |
 | `/platform/audit`                | Platform admins                         | Platform-level audit log                                                                              |
@@ -518,6 +519,30 @@ review) and decide on each report:
   Every decision is stored in `lab_report_reviews` (append-only, with the version it concerned)
   and audited on the report and its samples.
 
+## Publishing and notifications
+
+Design pack §8/§9/§20 (`report.publish`). The **Publish** page lists only reports marked ready to
+publish.
+
+- **Publish** = upload the **final report** (PDF, e.g. the signed client version) for a ready report
+  and release it, in one transaction: the report becomes `PUBLISHED` (frozen), its samples turn
+  **green**, and the notifications are queued. The lab's report versions stay as the internal record.
+- **Notifications** follow the M8 rules per client and vessel (client rule, vessel override,
+  hidden contacts — `effectiveRecipients()`, the same precedence as the vessel's Notifications
+  tab). Publishing raises one **Report published** email per client/vessel group of samples, with
+  the final PDF attached, plus a **Critical result** alert for groups with critical results
+  (listing them). When a rule is off or has no addresses, the notification records why.
+- **Outbox and worker:** notifications and their deliveries (`notifications`,
+  `notification_deliveries`) are written in the publishing transaction; a worker in the API
+  (`NOTIFICATIONS_WORKER=on`, every `NOTIFICATIONS_POLL_SECONDS`) claims due deliveries with
+  `FOR UPDATE SKIP LOCKED` (safe with several API instances), sends them over SMTP and records the
+  result. Failures retry after 1, 5, 30 and 120 minutes, then become **Failed** (shown on the
+  report, with the error; _Retry failed deliveries_ re-queues them). Deliveries stuck while sending
+  (crash) are re-queued after 10 minutes.
+- **SMTP:** `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`.
+  Without `SMTP_HOST`, emails are only logged. Docker Compose runs **Mailpit** (inbox at
+  http://localhost:8025) so nothing leaves the machine.
+
 ## Custom fields
 
 Tenants add their own fields to records (Admin → Custom fields, `custom-field.manage`). Record
@@ -665,6 +690,10 @@ When adding a feature that changes data:
 | `POST /api/v1/lab-reports/:id/reject`                                                                     | `report.review`                         | Reject with `{comment}` (back to the lab)                                                                   |
 | `POST /api/v1/lab-reports/:id/ready-to-publish`                                                           | `report.review`                         | Mark ready to publish (`{comment?}`)                                                                        |
 | `POST /api/v1/lab-reports/:id/reopen-review`                                                              | `report.review`                         | Send a ready report back to review (`{reason}`)                                                             |
+| `POST /api/v1/lab-reports/:id/publish`                                                                    | `report.publish`                        | Publish with the final report `{fileId, note?}`                                                             |
+| `GET /api/v1/lab-reports/:id/final-download-link`                                                         | `report.view`                           | Download link for the final report                                                                          |
+| `GET /api/v1/lab-reports/:id/notifications`                                                               | `report.view`                           | Notifications raised by publishing, with deliveries                                                         |
+| `POST /api/v1/lab-reports/:id/notifications/retry`                                                        | `report.publish`                        | Re-queue failed deliveries                                                                                  |
 | `GET /api/v1/lab-reports/:id/download-link`, `…/versions/:n/download-link`                                | `report.view`                           | Short-lived download links                                                                                  |
 | `GET/POST /api/v1/samples/:id/attachments`, `DELETE …/:attachmentId`, `GET …/:attachmentId/download-link` | `sample.view` / `sample.test`           | Sample attachments                                                                                          |
 | `GET /api/v1/clients/:id/vessels`                                                                         | `vessel.view`                           | Vessels linked to a client                                                                                  |
@@ -677,6 +706,13 @@ When adding a feature that changes data:
 
 ## Database conventions
 
+- **New enum values in their own migration.** PostgreSQL cannot use a value added with
+  `ALTER TYPE … ADD VALUE` in the same transaction (error 55P04), and Prisma runs each migration in
+  one transaction — so add the values in one migration and use them (CHECKs, data) in the next
+  (see `m16a`/`m16b`).
+- **Nested creates do not repeat `tenantId`.** When a child is created inside its parent
+  (`parent.create({ children: { create: … } })`), a composite `(…, tenant_id)` relation already
+  supplies the tenant; passing it again fails at runtime ("Unknown argument tenantId").
 - UUID primary keys; human-readable business codes (client code, batch number) as separate
   `@unique` columns.
 - Workflow states are Prisma enums, never free-text strings. Display colours (red/yellow/green)

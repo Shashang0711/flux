@@ -142,12 +142,20 @@ export class FilesService {
   ) {
     const file = await tx.storedFile.findUnique({
       where: { id: fileId },
-      include: { reportVersions: { select: { id: true } }, attachments: { select: { id: true } } },
+      include: {
+        reportVersions: { select: { id: true } },
+        attachments: { select: { id: true } },
+        finalReports: { select: { id: true } },
+      },
     });
     if (!file || file.uploadedById !== user.id) throw invalid(path, 'Upload the file first');
     if (file.status !== 'READY') throw invalid(path, 'The file upload has not finished');
     if (file.purpose !== purpose) throw invalid(path, 'This file was uploaded for something else');
-    if (file.reportVersions.length > 0 || file.attachments.length > 0) {
+    if (
+      file.reportVersions.length > 0 ||
+      file.attachments.length > 0 ||
+      file.finalReports.length > 0
+    ) {
       throw invalid(path, 'This file is already attached');
     }
     return file;

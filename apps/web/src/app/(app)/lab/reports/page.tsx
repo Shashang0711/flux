@@ -46,6 +46,7 @@ export default async function LabReportsPage({
             <option value="SUBMITTED">Awaiting review</option>
             <option value="REJECTED">Rejected</option>
             <option value="READY_TO_PUBLISH">Ready to publish</option>
+            <option value="PUBLISHED">Published</option>
           </select>
           <button className="btn" type="submit">
             Filter

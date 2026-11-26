@@ -16,6 +16,6 @@ import { FILE_STORAGE, createFileStorage } from './storage';
         createFileStorage((key) => config.get(key, { infer: true })),
     },
   ],
-  exports: [FilesService],
+  exports: [FilesService, FILE_STORAGE],
 })
 export class FilesModule {}

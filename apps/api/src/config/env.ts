@@ -58,6 +58,21 @@ const envSchema = z
      * development a random one is generated at start-up, so links stop working after a restart.
      */
     FILE_URL_SECRET: z.string().min(32).optional(),
+
+    /**
+     * Outgoing email. Without SMTP_HOST, emails are only written to the log (and marked sent),
+     * which suits development without a mail server.
+     */
+    SMTP_HOST: z.string().optional(),
+    SMTP_PORT: z.coerce.number().int().positive().default(587),
+    /** true: TLS from the start (port 465); false: STARTTLS when the server offers it. */
+    SMTP_SECURE: z.enum(['true', 'false']).default('false'),
+    SMTP_USER: z.string().optional(),
+    SMTP_PASSWORD: z.string().optional(),
+    MAIL_FROM: z.string().default('FLUX <no-reply@flux.local>'),
+    /** The background sender for queued notifications (off in tests, which drive it directly). */
+    NOTIFICATIONS_WORKER: z.enum(['on', 'off']).default('on'),
+    NOTIFICATIONS_POLL_SECONDS: z.coerce.number().int().positive().default(10),
   })
   .superRefine((env, ctx) => {
     if (env.STORAGE_DRIVER === 's3' && !env.S3_BUCKET) {

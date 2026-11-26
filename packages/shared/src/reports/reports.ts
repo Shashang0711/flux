@@ -15,6 +15,7 @@ export const LabReportStatus = {
   SUBMITTED: 'SUBMITTED',
   REJECTED: 'REJECTED',
   READY_TO_PUBLISH: 'READY_TO_PUBLISH',
+  PUBLISHED: 'PUBLISHED',
 } as const;
 export type LabReportStatus = (typeof LabReportStatus)[keyof typeof LabReportStatus];
 
@@ -75,6 +76,42 @@ export interface LabReportDto extends LabReportSummaryDto {
   reviews: LabReportReviewDto[];
   /** Who uploaded the current version (they cannot review it: four eyes). */
   currentUploaderId: string | null;
+  /** Set once published (M16): the final report released to the client. */
+  published: { at: string; by: string | null; note: string | null; file: FileDto } | null;
+}
+
+export const DeliveryStatus = {
+  PENDING: 'PENDING',
+  SENDING: 'SENDING',
+  SENT: 'SENT',
+  FAILED: 'FAILED',
+} as const;
+export type DeliveryStatus = (typeof DeliveryStatus)[keyof typeof DeliveryStatus];
+
+/** One email to one recipient (design pack: notification_deliveries). */
+export interface NotificationDeliveryDto {
+  id: string;
+  email: string;
+  name: string | null;
+  status: DeliveryStatus;
+  attempts: number;
+  lastError: string | null;
+  sentAt: string | null;
+}
+
+/** A notification raised by publishing: one per event and vessel/client group of samples. */
+export interface NotificationDto {
+  id: string;
+  event: string;
+  subject: string;
+  /** Sample codes the notification is about. */
+  samples: string[];
+  vessel: string | null;
+  client: string;
+  /** Why nothing was sent (rule switched off, no recipients with an email address). */
+  skippedReason: string | null;
+  createdAt: string;
+  deliveries: NotificationDeliveryDto[];
 }
 
 export interface SampleAttachmentDto {
@@ -109,8 +146,20 @@ export const addReportVersionSchema = z.object({
   note,
 });
 
+/** Publishing: the final report PDF released to the client; samples turn green. */
+export const publishReportSchema = z.object({
+  fileId: z.uuid({ message: 'Upload the final report' }),
+  note: z
+    .string()
+    .trim()
+    .max(1000)
+    .transform((v) => (v === '' ? null : v))
+    .nullable()
+    .optional(),
+});
+
 export const labReportListQuerySchema = z.object({
-  status: z.enum(['SUBMITTED', 'REJECTED', 'READY_TO_PUBLISH']).optional(),
+  status: z.enum(['SUBMITTED', 'REJECTED', 'READY_TO_PUBLISH', 'PUBLISHED']).optional(),
   batchId: z.uuid().optional(),
   q: z.string().trim().max(100).optional(),
 });

@@ -13,3 +13,6 @@ process.env.LOGIN_ACCOUNT_RATE_LIMIT = '1000';
 // Uploaded files go to a throwaway folder (local storage driver).
 process.env.STORAGE_DRIVER = 'local';
 process.env.STORAGE_LOCAL_DIR = join(tmpdir(), `flux-e2e-storage-${process.pid}`);
+// Notifications are queued but not sent in the background; tests run the worker themselves.
+process.env.NOTIFICATIONS_WORKER = 'off';
+delete process.env.SMTP_HOST;
