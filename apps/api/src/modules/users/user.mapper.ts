@@ -20,6 +20,7 @@ export function toUserDto(user: UserWithRoles): UserDto {
     status: user.status,
     isPlatformAdmin: user.isPlatformAdmin,
     roles: (user.userRoles ?? []).map((ur) => ur.role),
+    clientId: user.clientId,
     lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),

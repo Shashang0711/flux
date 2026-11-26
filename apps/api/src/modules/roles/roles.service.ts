@@ -335,8 +335,9 @@ export class RolesService {
       const role = await this.find(tx, id);
       const licensed = await tenantModules(tx);
       assertNoEscalation(actor, grantOf(role, licensed), licensed);
+      // Staff only: client portal users never hold roles (also enforced by a trigger).
       const users = await tx.user.findMany({
-        where: { id: { in: userIds } },
+        where: { id: { in: userIds }, clientId: null },
         select: {
           id: true,
           name: true,

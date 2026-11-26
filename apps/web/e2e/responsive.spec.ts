@@ -70,6 +70,7 @@ test.describe('tenant admin pages fit every screen', () => {
       'notifications',
       'vessels',
       'fleets',
+      'portal-users',
       'audit',
     ]) {
       await checkPage(page, `${client}?tab=${tab}`);
@@ -128,6 +129,17 @@ test.describe('platform pages fit every screen', () => {
       await checkPage(page, path);
     }
     await checkPage(page, await firstRecordHref(page, '/platform/tenants'));
+  });
+});
+
+test.describe('client portal pages fit every screen', () => {
+  test.use({ storageState: STATE.client });
+
+  test('overview, samples, reports, account and details', async ({ page }) => {
+    for (const path of ['/client', '/client/samples', '/client/reports', '/client/account']) {
+      await checkPage(page, path);
+    }
+    await checkPage(page, await firstRecordHref(page, '/client/samples'));
   });
 });
 

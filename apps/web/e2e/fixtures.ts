@@ -6,9 +6,13 @@ export const OPERATOR = {
   password: process.env.E2E_OPERATOR_PASSWORD ?? 'operator-pass-1',
 };
 
+/** Client portal user of Aegean Bulk Carriers SA (seeded). */
+export const CLIENT_USER = { email: 'carla@aegeanbulk.test', password: 'demo-pass-123' };
+
 export const STATE = {
   owner: './e2e/.auth/owner.json',
   operator: './e2e/.auth/operator.json',
+  client: './e2e/.auth/client.json',
 };
 
 /** True when the layout uses the top bar + drawer (below 1024px). */

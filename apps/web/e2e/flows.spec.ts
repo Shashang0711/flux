@@ -657,3 +657,103 @@ test('sample update: monthly grid by vessel and service, drill into a day, filte
     9,
   ); // name + 7 days + total
 });
+
+test('client portal: the lab adds a portal user, who sees only their published results', async ({
+  page,
+  browser,
+  playwright,
+  baseURL,
+}, info) => {
+  const tag = `P${info.project.name.slice(0, 1).toUpperCase()}${Date.now().toString(36).toUpperCase()}`;
+  // A published report for Aegean Bulk Carriers SA (the client of Aegean Star).
+  const batch = await ballastBatch(page, tag, 1);
+  const sample = batch.samples[0]!;
+  await completeResults(page, sample.id);
+  const upload = async (purpose: string, name: string) => {
+    const intent = (
+      await (
+        await page.request.post('/api/v1/files', { data: { purpose, name, size: PDF.length } })
+      ).json()
+    ).data;
+    return (
+      await (
+        await page.request.put(`/api/v1${intent.uploadPath}`, {
+          data: PDF,
+          headers: { 'Content-Type': 'application/octet-stream' },
+        })
+      ).json()
+    ).data as { id: string };
+  };
+  const lab = await upload('LAB_REPORT', 'lab.pdf');
+  const report = (
+    await (
+      await page.request.post('/api/v1/lab-reports', {
+        data: { batchId: batch.id, sampleIds: [sample.id], fileId: lab.id },
+      })
+    ).json()
+  ).data;
+  const rita = await playwright.request.newContext({ baseURL });
+  await rita.post('/api/v1/auth/login', {
+    data: { email: 'rita@oceanic.test', password: 'demo-pass-123' },
+  });
+  expect(
+    (await rita.post(`/api/v1/lab-reports/${report.id}/ready-to-publish`, { data: {} })).ok(),
+  ).toBe(true);
+  await rita.dispose();
+  const final = await upload('FINAL_REPORT', 'final.pdf');
+  expect(
+    (
+      await page.request.post(`/api/v1/lab-reports/${report.id}/publish`, {
+        data: { fileId: final.id },
+      })
+    ).ok(),
+  ).toBe(true);
+
+  // The lab adds a portal user on the client page.
+  await page.goto('/admin/clients?q=Aegean Bulk');
+  await page.getByRole('link', { name: 'Aegean Bulk Carriers SA' }).click();
+  await page
+    .getByRole('navigation', { name: 'Lists' })
+    .getByRole('link', { name: 'Portal users', exact: true })
+    .click();
+  const email = `${tag.toLowerCase()}@aegeanbulk.test`;
+  await page.getByRole('button', { name: 'Add portal user' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add a portal user' });
+  await dialog.getByLabel('Name').fill(`Portal ${tag}`);
+  await dialog.getByLabel('Email').fill(email);
+  await dialog.getByLabel('Password').fill('portal-pass-123');
+  await dialog.getByRole('button', { name: 'Add portal user' }).click();
+  await expect(dialog.getByText('Portal user added.')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByRole('table', { name: 'Portal users' })).toContainText(email);
+
+  // They sign in and land in the client portal.
+  const context = await browser.newContext();
+  const client = await context.newPage();
+  await client.goto('/login');
+  await client.getByLabel('Email').fill(email);
+  await client.getByLabel('Password').fill('portal-pass-123');
+  await client.getByRole('button', { name: 'Sign in' }).click();
+  await expect(client).toHaveURL(/\/client$/);
+  await expect(
+    client.getByRole('heading', { level: 1, name: 'Aegean Bulk Carriers SA' }),
+  ).toBeVisible();
+
+  // Staff pages send them back to the portal.
+  await client.goto('/admin/clients');
+  await expect(client).toHaveURL(/\/client$/);
+
+  await client.goto(`/client/samples?q=${sample.code}`);
+  const row = client.getByRole('table', { name: 'Samples' }).locator('tbody tr');
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText('Report published');
+  await row.getByRole('link', { name: sample.code }).click();
+  await expect(client.getByRole('table', { name: 'Results' })).toContainText('E. coli');
+
+  await client.getByRole('link', { name: report.code }).click();
+  await expect(client.getByRole('heading', { level: 1, name: report.code })).toBeVisible();
+  const download = client.waitForEvent('download');
+  await client.getByRole('button', { name: 'Download report (PDF)' }).click();
+  expect((await download).suggestedFilename()).toBe('final.pdf');
+  await context.close();
+});

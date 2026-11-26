@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { SessionInfo } from '@flux/shared';
 import { visibleNavigation } from './navigation';
 
-function session(overrides: { isPlatformAdmin?: boolean; permissions?: string[] }): SessionInfo {
+function session(overrides: {
+  isPlatformAdmin?: boolean;
+  permissions?: string[];
+  client?: boolean;
+}): SessionInfo {
   return {
     user: {
       id: 'u',
@@ -11,6 +15,7 @@ function session(overrides: { isPlatformAdmin?: boolean; permissions?: string[] 
       status: 'ACTIVE',
       isPlatformAdmin: overrides.isPlatformAdmin ?? false,
       roles: [],
+      clientId: overrides.client ? 'c' : null,
       lastLoginAt: null,
       createdAt: '',
       updatedAt: '',
@@ -23,12 +28,23 @@ function session(overrides: { isPlatformAdmin?: boolean; permissions?: string[] 
       permissions: (overrides.permissions ?? []) as SessionInfo['access']['permissions'],
       defaultPortal: null,
     },
+    client: overrides.client ? { id: 'c', code: 'C-1', name: 'Client' } : null,
   };
 }
 
 const labels = (s: SessionInfo) => visibleNavigation(s).flatMap((g) => g.items.map((i) => i.label));
 
 describe('visibleNavigation', () => {
+  it('shows client users the client portal only', () => {
+    expect(labels(session({ client: true, permissions: ['client-portal.view'] }))).toEqual([
+      'Overview',
+      'Samples',
+      'Reports',
+    ]);
+    // Even a stray staff permission never shows staff screens to a client user.
+    expect(labels(session({ client: true, permissions: ['user.view'] }))).toEqual([]);
+  });
+
   it('shows platform screens only to platform admins', () => {
     expect(labels(session({ isPlatformAdmin: true }))).toEqual([
       'Dashboard',

@@ -30,7 +30,7 @@ export class AuthService {
     // System lookup (bypasses RLS): the tenant is not known until the user is found.
     const user = await this.prisma.user.findUnique({
       where: { email: credentials.email },
-      include: { tenant: { select: { status: true } } },
+      include: { tenant: { select: { status: true } }, client: { select: { status: true } } },
     });
 
     // Same message and similar timing for unknown email, wrong password and disabled account,
@@ -50,6 +50,10 @@ export class AuthService {
       );
     }
 
+    if (user.client && user.client.status !== 'ACTIVE') {
+      throw AppException.forbidden('Portal access for your company is not active');
+    }
+
     const { token, expiresAt } = await this.sessions.create(user.id, meta);
     const updated = await this.prisma.user.update({
       where: { id: user.id },
@@ -65,15 +69,17 @@ export class AuthService {
       include: {
         ...USER_ROLES_INCLUDE,
         tenant: { select: { id: true, slug: true, name: true } },
+        client: { select: { id: true, code: true, name: true } },
       },
     });
     if (!user) throw AppException.unauthenticated();
-    const { tenant } = user;
+    const { tenant, client } = user;
     return {
       user: toUserDto(user),
       tenant: tenant ? { id: tenant.id, slug: tenant.slug, name: tenant.name } : null,
       modules: auth.modules,
       access: auth.access,
+      client,
     };
   }
 

@@ -22,3 +22,4 @@ export * from './testing/testing';
 export * from './files/files';
 export * from './reports/reports';
 export * from './sample-update/sample-update';
+export * from './portal/portal';

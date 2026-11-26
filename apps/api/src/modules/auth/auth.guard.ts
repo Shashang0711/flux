@@ -4,6 +4,7 @@ import { ErrorCode, MODULES, type ModuleKey, type PermissionKey } from '@flux/sh
 import { AppException } from '../../common/errors/app.exception';
 import type { AuthenticatedRequest } from './auth.types';
 import {
+  CLIENT_USERS_KEY,
   IS_PUBLIC_KEY,
   REQUIRED_MODULE_KEY,
   REQUIRED_PERMISSIONS_KEY,
@@ -14,7 +15,8 @@ import { SessionService } from './session.service';
 
 /**
  * Global guard. Every route requires a valid session unless marked @Public(), then:
- * @RequirePlatformAdmin(), @RequireModule() and @RequirePermission().
+ * client users only on @AllowClientUsers() routes, @RequirePlatformAdmin(), @RequireModule() and
+ * @RequirePermission().
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -41,6 +43,9 @@ export class AuthGuard implements CanActivate {
     request.user = user;
     request.sessionId = session.sessionId;
 
+    if (user.clientId && !meta<boolean>(CLIENT_USERS_KEY)) {
+      throw AppException.forbidden('This is not available in the client portal');
+    }
     if (meta<boolean>(REQUIRES_PLATFORM_ADMIN_KEY) && !user.isPlatformAdmin) {
       throw AppException.forbidden();
     }
