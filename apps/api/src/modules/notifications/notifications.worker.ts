@@ -3,9 +3,11 @@ import {
   Inject,
   Injectable,
   Logger,
+  type BeforeApplicationShutdown,
   type OnApplicationBootstrap,
-  type OnModuleDestroy,
 } from '@nestjs/common';
+import { Gauge } from 'prom-client';
+import { registry } from '../../common/metrics/metrics';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../../config/env';
 import { PrismaService } from '../../database/prisma.service';
@@ -25,6 +27,12 @@ async function toBuffer(stream: Readable): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+const lastTick = new Gauge({
+  name: 'flux_notifications_worker_last_tick_timestamp_seconds',
+  help: 'When the notification worker last checked for due deliveries (Unix time)',
+  registers: [registry],
+});
+
 interface Claimed {
   id: string;
   notification_id: string;
@@ -40,10 +48,12 @@ interface Claimed {
  * (a user can retry them). Works across tenants with system access.
  */
 @Injectable()
-export class NotificationsWorker implements OnApplicationBootstrap, OnModuleDestroy {
+export class NotificationsWorker implements OnApplicationBootstrap, BeforeApplicationShutdown {
   private readonly logger = new Logger(NotificationsWorker.name);
   private timer?: NodeJS.Timeout;
-  private running = false;
+  private current?: Promise<void>;
+  /** Last completed check (readiness: a stuck worker shows as stale). Null until the first. */
+  lastTickAt: Date | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -58,20 +68,25 @@ export class NotificationsWorker implements OnApplicationBootstrap, OnModuleDest
     this.timer = setInterval(() => void this.tick(), seconds * 1000);
   }
 
-  onModuleDestroy(): void {
-    if (this.timer) clearInterval(this.timer);
+  get enabled(): boolean {
+    return this.config.get('NOTIFICATIONS_WORKER', { infer: true }) === 'on';
   }
 
-  private async tick(): Promise<void> {
-    if (this.running) return;
-    this.running = true;
-    try {
-      await this.runOnce();
-    } catch (error) {
-      this.logger.error(`Notification worker failed: ${(error as Error).message}`);
-    } finally {
-      this.running = false;
-    }
+  /** Stops polling and lets a batch in progress finish before the database closes. */
+  async beforeApplicationShutdown(): Promise<void> {
+    clearInterval(this.timer);
+    await this.current;
+  }
+
+  private tick(): void {
+    if (this.current) return;
+    this.current = this.runOnce()
+      .then(() => {
+        this.lastTickAt = new Date();
+        lastTick.setToCurrentTime();
+      })
+      .catch((error: Error) => this.logger.error(`Notification worker failed: ${error.message}`))
+      .finally(() => (this.current = undefined));
   }
 
   /** Sends what is due now. Returns counts (also used by tests). */
@@ -143,7 +158,8 @@ export class NotificationsWorker implements OnApplicationBootstrap, OnModuleDest
         });
         if (final) counts.failed++;
         else counts.retrying++;
-        this.logger.warn(`Delivery to ${d.email} failed (attempt ${d.attempts}): ${message}`);
+        // The delivery id, not the address: logs must not collect personal data.
+        this.logger.warn(`Delivery ${d.id} failed (attempt ${d.attempts}): ${message}`);
       }
     }
     return counts;

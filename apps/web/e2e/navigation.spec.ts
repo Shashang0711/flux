@@ -41,3 +41,26 @@ test('desktop shows the sidebar without a menu button', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Open menu' })).toBeHidden();
   await expect(page.getByRole('button', { name: 'Close menu' })).toBeHidden();
 });
+
+test('pages run under a strict Content-Security-Policy without violations', async ({ page }) => {
+  const violations: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error' && /Content Security Policy|Refused to/i.test(msg.text()))
+      violations.push(msg.text());
+  });
+  for (const path of ['/', '/admin/clients', '/lab/sample-update', '/lab/samples']) {
+    const response = await page.goto(path);
+    const headers = response!.headers();
+    expect(headers['content-security-policy']).toMatch(/script-src 'self' 'nonce-[^']+'/);
+    expect(headers['content-security-policy']).toContain("frame-ancestors 'none'");
+    expect(headers['x-content-type-options']).toBe('nosniff');
+    expect(headers['x-frame-options']).toBe('DENY');
+    // Hydrated: client components respond (the menu or a link works).
+    await expect(page.locator('main h1')).toBeVisible();
+  }
+  // A nonce is never reused.
+  const a = (await page.goto('/'))!.headers()['content-security-policy'];
+  const b = (await page.goto('/'))!.headers()['content-security-policy'];
+  expect(a).not.toBe(b);
+  expect(violations).toEqual([]);
+});

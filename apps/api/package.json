@@ -12,7 +12,10 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "prisma:seed": "prisma db seed"
+    "prisma:seed": "prisma db seed",
+    "backup": "tsx src/ops/cli.ts backup",
+    "backup:verify": "tsx src/ops/cli.ts verify",
+    "restore": "tsx src/ops/cli.ts restore"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -33,6 +36,7 @@
     "nodemailer": "10.5.0",
     "pino": "^9.14.0",
     "pino-http": "^10.5.0",
+    "prom-client": "15.1.3",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "zod": "^4.6.7"

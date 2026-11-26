@@ -1,8 +1,10 @@
 import { INestApplication, VersioningType } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { Express } from 'express';
 import helmet from 'helmet';
+import { httpMetrics } from './common/metrics/metrics';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { EnvelopeInterceptor } from './common/interceptors/envelope.interceptor';
 import { parseTrustProxy } from './config/env';
@@ -22,7 +24,10 @@ export function configureApp(app: INestApplication, options: AppOptions): void {
   express.set('trust proxy', parseTrustProxy(options.trustProxy ?? 'loopback'));
   app.setGlobalPrefix('api');
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+  app.use(httpMetrics);
   app.use(helmet());
+  // JSON bodies up to 1 MB (large batch result uploads); file bytes use their own limit.
+  (app as NestExpressApplication).useBodyParser('json', { limit: '1mb' });
   app.use(cookieParser());
   app.enableCors({ origin: options.corsOrigins, credentials: true });
   app.useGlobalFilters(new AllExceptionsFilter());

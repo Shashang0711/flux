@@ -15,6 +15,7 @@ import { ReceivingModule } from './modules/receiving/receiving.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { SampleUpdateModule } from './modules/sample-update/sample-update.module';
 import { PortalModule } from './modules/portal/portal.module';
+import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { SamplesModule } from './modules/samples/samples.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { ReferenceDataModule } from './modules/reference-data/reference-data.module';
@@ -66,6 +67,7 @@ export const REQUEST_ID_HEADER = 'x-request-id';
     SamplesModule,
     SampleUpdateModule,
     PortalModule,
+    MaintenanceModule,
     FilesModule,
     ReportsModule,
   ],

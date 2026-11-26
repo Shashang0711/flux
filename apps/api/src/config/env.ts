@@ -73,6 +73,18 @@ const envSchema = z
     /** The background sender for queued notifications (off in tests, which drive it directly). */
     NOTIFICATIONS_WORKER: z.enum(['on', 'off']).default('on'),
     NOTIFICATIONS_POLL_SECONDS: z.coerce.number().int().positive().default(10),
+
+    /** Housekeeping (old sessions, abandoned uploads); off in tests, which drive it directly. */
+    MAINTENANCE_WORKER: z.enum(['on', 'off']).default('on'),
+    MAINTENANCE_INTERVAL_MINUTES: z.coerce.number().int().positive().default(60),
+    /** Ended sessions (expired, revoked or idle) are deleted after this many days. */
+    SESSION_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+    /** Uploads never finished or never attached are deleted after this many hours. */
+    UPLOAD_ABANDON_HOURS: z.coerce.number().int().positive().default(24),
+    /**
+     * Bearer token for GET /api/v1/metrics (Prometheus). Without it the endpoint is off (404).
+     */
+    METRICS_TOKEN: z.string().min(16).optional(),
   })
   .superRefine((env, ctx) => {
     if (env.STORAGE_DRIVER === 's3' && !env.S3_BUCKET) {

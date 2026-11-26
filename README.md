@@ -24,10 +24,11 @@ npm workspaces; Node 20.19+ (`.nvmrc`).
 docker compose up -d --build
 ```
 
-This starts Postgres (host port **5433**), the API (**4000**, applies migrations on start) and the
-web app (**3000**). Open http://localhost:3000. Seed the database once with
-`docker compose exec api npx prisma db seed`. Ports can be changed with `POSTGRES_PORT`,
-`API_PORT` and `WEB_PORT`. Stop any local `npm run dev` first, or the ports will clash.
+This starts Postgres (host port **5433**), a one-off `tools` job (applies migrations and seeds the
+bootstrap admin from `FLUX_ADMIN_*` in a `.env` next to the compose file), then the API
+(**4000**) and the web app (**3000**). Open http://localhost:3000. Ports can be changed with
+`POSTGRES_PORT`, `API_PORT` and `WEB_PORT`. Stop any local `npm run dev` first, or the ports will
+clash.
 
 ### Option B: apps on the host
 
@@ -621,6 +622,10 @@ field-level changes (`{ field: {from, to} }` or `{ list: {added, removed} }`). N
   user's role change), so `GET /audit-logs?entityId=…` returns everything touching that record.
 - **Platform actions** on a tenant (creation, modules, suspension) appear in the tenant's log as
   "FLUX platform"; operators see their own names in the platform view of the tenant.
+- **Sign-ins.** Every sign-in (`auth.signed_in`) and failed sign-in to a known account
+  (`auth.sign_in_failed`, with the reason: wrong password, account disabled, organisation
+  suspended, client inactive) is recorded with IP and request ID. Attempts on unknown emails are
+  only logged, without the address.
 
 When adding a feature that changes data:
 
@@ -633,6 +638,9 @@ When adding a feature that changes data:
 
 | Method and path                                                                                           | Access                                      | Purpose                                                                                                     |
 | --------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/health`                                                                                      | Public                                      | Readiness: database, file storage, notification worker (503 if database or storage is down)                 |
+| `GET /api/v1/health/live`                                                                                 | Public                                      | Liveness: the process answers (no dependencies)                                                             |
+| `GET /api/v1/metrics`                                                                                     | `Authorization: Bearer $METRICS_TOKEN`      | Prometheus metrics; 404 when `METRICS_TOKEN` is not set                                                     |
 | `POST /api/v1/auth/login`                                                                                 | Public                                      | Sign in; sets the session cookie                                                                            |
 | `POST /api/v1/auth/logout`                                                                                | Public                                      | Revoke the session and clear the cookie                                                                     |
 | `GET /api/v1/auth/me`                                                                                     | Signed in                                   | Current user                                                                                                |
@@ -750,6 +758,94 @@ When adding a feature that changes data:
 | `GET /api/v1/custom-fields?entity=client`                                                                 | Signed in (tenant)                          | Field definitions (`view=all` includes inactive)                                                            |
 | `POST /api/v1/custom-fields`                                                                              | `custom-field.manage`                       | Define a field                                                                                              |
 | `PATCH /api/v1/custom-fields/:id`                                                                         | `custom-field.manage`                       | Edit label, options, required, order, active                                                                |
+
+## Operations
+
+### Health checks and monitoring
+
+- **Liveness** `GET /api/v1/health/live`: the process answers. Use it to restart a hung
+  container; it never depends on the database, so a database outage does not restart the API.
+- **Readiness** `GET /api/v1/health`: `503` while the database or file storage is unreachable (take
+  the instance out of the load balancer). `status: "degraded"` when the notification worker has
+  not checked in for 5 poll intervals (emails delayed); the dashboard shows this too.
+- **Metrics** `GET /api/v1/metrics` (Prometheus text) with `Authorization: Bearer $METRICS_TOKEN`
+  (16+ characters; without it the endpoint is off). Process metrics (CPU, memory, event loop, GC),
+  `http_request_duration_seconds{method,route,status_code}` (route patterns, not URLs),
+  `flux_notification_deliveries{status}`, `flux_notifications_worker_last_tick_timestamp_seconds`
+  and `flux_maintenance_last_run_timestamp_seconds`. Suggested alerts: readiness failing; 5xx
+  rate; `FAILED` deliveries rising; worker or maintenance timestamps older than 15 min / 2 h.
+- **Logs** are JSON (pino) with a request ID per request (`x-request-id`, also in audit entries
+  and error responses). Cookies and authorization headers are redacted; email addresses are not
+  logged by the notification worker or sign-in.
+- **Shutdown.** On `SIGTERM` the API stops taking work, lets a notification batch or maintenance
+  run in progress finish, then closes the database connection.
+
+### Housekeeping
+
+The API runs a maintenance job every `MAINTENANCE_INTERVAL_MINUTES` (default 60; one instance at
+a time, by advisory lock): it deletes sessions that ended more than `SESSION_RETENTION_DAYS` ago
+(default 30) and uploads never finished or never attached for `UPLOAD_ABANDON_HOURS` (default 24),
+rows and stored objects. Files in use (reports, attachments, notifications) are never touched.
+
+### Security
+
+- **API:** Helmet headers, CORS allow-list, `SameSite=Lax` httpOnly session cookies, JSON bodies
+  up to 1 MB (`413 PAYLOAD_TOO_LARGE`; malformed JSON is a `400`), login rate limits per IP and
+  per account, deny-by-default authorization. An e2e test lists every route and fails if one is
+  neither public, platform-only, permission-checked nor an approved self-service route, and checks
+  that client users can reach only `/auth` and `/portal`.
+- **Web:** a per-request nonce Content-Security-Policy (`script-src 'self' 'nonce-…'
+'strict-dynamic'`, `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'none'`) set in
+  `src/proxy.ts`, plus `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
+  `Permissions-Policy`, `Cross-Origin-Opener-Policy` and HSTS (`next.config.ts`). Pages therefore
+  render per request. A browser test checks the headers and that pages run without violations.
+- **Images:** the `api` and `web` images contain production dependencies only (no Prisma CLI,
+  TypeScript or build tools) and run as the `node` user; the one-off `tools` image runs
+  migrations, the seed and backups. `npm audit` (which reads the lockfile) reports high advisories
+  in dependencies of the Prisma CLI (`effect`, `deepmerge-ts` via `@prisma/config`): those
+  packages are not installed in the running images (CI checks this) and are only used by
+  operators' CLI commands. They clear with the Prisma 7 upgrade.
+
+### Backups and restore
+
+A backup is a folder `flux-backup-<UTC time>` with `database.dump` (`pg_dump`, custom format, one
+consistent snapshot), `files/` (every stored file) and `manifest.json` (app version, last
+migration, row counts per table, SHA-256 of the dump and of every file). Folders are written
+with owner-only permissions; keep them encrypted and off the server.
+
+```bash
+# Docker Compose (tools image has matching PostgreSQL 16 tools); files land in ./backups
+docker compose run --rm tools npm run backup -- --dir /backups --keep 14
+docker compose run --rm tools npm run backup:verify -- /backups/flux-backup-…
+# On the host (needs pg_dump/pg_restore of the server's major version, see below)
+npm run backup -w @flux/api -- --dir ./backups --keep 14
+```
+
+`--keep N` deletes all but the newest N backups in that folder. Exit code `2` means the backup was
+written with warnings (e.g. a stored object missing or not matching its checksum) — alert on it.
+Schedule it daily (cron or a systemd timer) and copy the folder off-site.
+
+**Restore** (only into an empty database; to replace an installation, create a new database):
+
+1. Stop the API (`docker compose stop api web`).
+2. Create an empty database (`createdb flux_restored`, or drop and recreate `flux`), and point
+   `STORAGE_*`/`S3_*` at the target storage.
+3. Check, then restore:
+   ```bash
+   npm run restore -w @flux/api -- /backups/flux-backup-… # verifies, restores nothing
+   npm run restore -w @flux/api -- /backups/flux-backup-… --yes --database-url postgresql://…/flux_restored
+   ```
+   The whole backup is checked against its manifest first; the database is restored in one
+   transaction; files are uploaded; then row counts and every file's checksum are compared.
+4. Point `DATABASE_URL` at the restored database and start the API (pending migrations of a newer
+   version are applied by the `tools` job as usual).
+
+`pg_dump`/`pg_restore` must have the **same major version as the server** (a newer `pg_restore`
+emits settings an older server rejects); the tool checks this. On a host with other versions, use
+the official image: `PG_DUMP_COMMAND="docker run -i --rm --network host -e PGPASSWORD
+postgres:16-alpine pg_dump"` (and the same for `PG_RESTORE_COMMAND`). The e2e suite backs up,
+restores into a scratch database (`flux_restore_test`) and verifies, so CI exercises the restore
+on every change.
 
 ## Database conventions
 

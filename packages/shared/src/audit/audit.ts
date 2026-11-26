@@ -14,6 +14,8 @@ export const AUDIT_ACTIONS = {
   'user.roles_changed': 'User roles changed',
   'user.password_reset': 'Password reset by administrator',
   'user.password_changed': 'Password changed',
+  'auth.signed_in': 'Signed in',
+  'auth.sign_in_failed': 'Sign-in failed',
   'role.created': 'Role created',
   'role.cloned': 'Role cloned',
   'role.updated': 'Role updated',

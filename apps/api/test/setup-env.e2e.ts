@@ -15,4 +15,6 @@ process.env.STORAGE_DRIVER = 'local';
 process.env.STORAGE_LOCAL_DIR = join(tmpdir(), `flux-e2e-storage-${process.pid}`);
 // Notifications are queued but not sent in the background; tests run the worker themselves.
 process.env.NOTIFICATIONS_WORKER = 'off';
+process.env.MAINTENANCE_WORKER = 'off';
+process.env.METRICS_TOKEN = 'test-metrics-token-0000';
 delete process.env.SMTP_HOST;

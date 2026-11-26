@@ -51,7 +51,7 @@ services:
       context: .
       target: api
     init: true
-    environment:
+    environment: &api-env
       PORT: 4000
       # Inside the compose network Postgres is reached by service name on its container port.
       DATABASE_URL: postgresql://flux:flux@postgres:5432/flux?schema=public
@@ -84,8 +84,8 @@ services:
     ports:
       - '${API_PORT:-4000}:4000'
     depends_on:
-      postgres:
-        condition: service_healthy
+      tools:
+        condition: service_completed_successfully
       seaweedfs:
         condition: service_healthy
       mailpit:
@@ -99,6 +99,21 @@ services:
       interval: 10s
       start_period: 20s
       retries: 5
+
+  # One-off: applies migrations and seeds the bootstrap admin, then exits; the API starts after
+  # it succeeds. Also runs backups: docker compose run --rm tools npm run backup -- --dir /backups
+  tools:
+    build:
+      context: .
+      target: tools
+    environment: *api-env
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
 
   web:
     build:

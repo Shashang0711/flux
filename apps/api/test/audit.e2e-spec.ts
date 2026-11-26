@@ -31,7 +31,8 @@ describe('Audit log (e2e)', () => {
 
   async function entries(cookie = admin, query = ''): Promise<AuditLogDto[]> {
     const res = await get(cookie, `/api/v1/audit-logs?pageSize=100${query}`).expect(200);
-    return res.body.data;
+    // Sign-ins are audited too (see hardening.e2e-spec.ts); these tests are about changes.
+    return (res.body.data as AuditLogDto[]).filter((e) => !e.action.startsWith('auth.'));
   }
 
   beforeAll(async () => {
@@ -197,7 +198,9 @@ describe('Audit log (e2e)', () => {
         roleIds: [hr.id, adminRoleId],
       }).expect(403);
 
-      expect(await prisma.auditLog.count()).toBe(0);
+      expect(
+        await prisma.auditLog.count({ where: { NOT: { action: { startsWith: 'auth.' } } } }),
+      ).toBe(0);
     });
   });
 
@@ -245,7 +248,11 @@ describe('Audit log (e2e)', () => {
       const otherAdmin = await loginCookie(app, 'admin@other.test');
       expect(await entries(otherAdmin)).toEqual([]);
 
-      const viaDb = await app.get(TenantDb).run(other.id, (tx) => tx.auditLog.count());
+      const viaDb = await app
+        .get(TenantDb)
+        .run(other.id, (tx) =>
+          tx.auditLog.count({ where: { NOT: { action: { startsWith: 'auth.' } } } }),
+        );
       expect(viaDb).toBe(0);
     });
 
@@ -254,7 +261,7 @@ describe('Audit log (e2e)', () => {
         name: 'Evidence',
         defaultPortal: 'ADMIN',
       }).expect(201);
-      const entry = await prisma.auditLog.findFirstOrThrow();
+      const entry = await prisma.auditLog.findFirstOrThrow({ where: { action: 'role.created' } });
       const tenantDb = app.get(TenantDb);
 
       await expect(

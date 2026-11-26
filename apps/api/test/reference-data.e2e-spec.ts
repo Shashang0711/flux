@@ -367,17 +367,20 @@ describe('Reference data (e2e, hybrid)', () => {
         .expect(200);
 
       const tenantLog = await api().get('/api/v1/audit-logs').set('Cookie', admin).expect(200);
-      expect(tenantLog.body.data.map((e: { action: string }) => e.action)).toEqual([
-        'reference.hidden',
-        'reference.created',
-      ]);
+      const changes = tenantLog.body.data
+        .map((e: { action: string }) => e.action)
+        .filter((a: string) => !a.startsWith('auth.'));
+      expect(changes).toEqual(['reference.hidden', 'reference.created']);
 
       const platformLog = await api()
         .get('/api/v1/platform/audit-logs')
         .set('Cookie', operator)
         .expect(200);
-      expect(platformLog.body.data).toHaveLength(1);
-      expect(platformLog.body.data[0]).toMatchObject({
+      const platformChanges = platformLog.body.data.filter(
+        (e: { action: string }) => !e.action.startsWith('auth.'),
+      );
+      expect(platformChanges).toHaveLength(1);
+      expect(platformChanges[0]).toMatchObject({
         action: 'reference.deactivated',
         actor: { name: 'Olivia Operator' },
         changes: { isActive: { from: true, to: false } },
