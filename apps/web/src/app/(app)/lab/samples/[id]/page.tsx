@@ -28,7 +28,11 @@ export default async function SamplePage({ params }: { params: Promise<{ id: str
         title={`Sample ${s.code}`}
         description={
           <span className="row">
-            <SampleStatusBadge status={s.status} colour={s.colour} />
+            <SampleStatusBadge
+              status={s.status}
+              colour={s.colour}
+              reportStatus={s.labReport?.status}
+            />
             <FlagBadge flag={s.worstFlag} />
             <span>{s.serviceType.name}</span>
           </span>

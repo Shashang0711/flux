@@ -29,11 +29,15 @@ export type SampleStatus = (typeof SampleStatus)[keyof typeof SampleStatus];
 
 /**
  * Sample Update colours (design pack §9): red once registered, yellow when the lab report is
- * uploaded, green when the final report is published (M16). Computed from state, never stored.
+ * uploaded, green when the final report is published (M16). A rejected report goes back to the
+ * lab for correction, so its samples are red again. Computed from state, never stored.
  */
 export type SampleColour = 'red' | 'yellow' | 'green';
-export function sampleColour(sample: { status: SampleStatus; labReport?: unknown }): SampleColour {
-  return sample.labReport ? 'yellow' : 'red';
+export function sampleColour(sample: {
+  status: SampleStatus;
+  labReport?: { status: string } | null;
+}): SampleColour {
+  return sample.labReport && sample.labReport.status !== 'REJECTED' ? 'yellow' : 'red';
 }
 
 /** B26-00001 */

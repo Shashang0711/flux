@@ -309,9 +309,10 @@ export class TestingService {
   ): Promise<void> {
     const link = await tx.labReportSample.findUnique({
       where: { sampleId },
-      include: { report: { select: { code: true } } },
+      include: { report: { select: { code: true, status: true } } },
     });
-    if (link)
+    // A rejected report releases its samples so the lab can correct them.
+    if (link && link.report.status !== 'REJECTED')
       throw AppException.badRequest(
         `This sample is in lab report ${link.report.code}. ${consequence}.`,
       );

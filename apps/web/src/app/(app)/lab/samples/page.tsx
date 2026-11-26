@@ -92,7 +92,13 @@ export default async function SamplesPage({
             },
             {
               header: 'Status',
-              cell: (s) => <SampleStatusBadge status={s.status} colour={s.colour} />,
+              cell: (s) => (
+                <SampleStatusBadge
+                  status={s.status}
+                  colour={s.colour}
+                  reportStatus={s.labReport?.status}
+                />
+              ),
             },
             { header: 'Flag', cell: (s) => <FlagBadge flag={s.worstFlag} /> },
           ]}

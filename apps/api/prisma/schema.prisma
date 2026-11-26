@@ -86,6 +86,8 @@ model Tenant {
   labReportSamples  LabReportSample[]
   sampleAttachments SampleAttachment[]
 
+  labReportReviews LabReportReview[]
+
   @@map("tenants")
 }
 
@@ -135,6 +137,8 @@ model User {
   enteredResults SampleResult[]
 
   uploadedFiles StoredFile[]
+
+  reportReviews LabReportReview[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -1366,6 +1370,8 @@ model LabReport {
   versions    LabReportVersion[]
   samples     LabReportSample[]
 
+  reviews LabReportReview[]
+
   @@unique([tenantId, code])
   @@unique([id, tenantId])
   /// Target for lab_report_samples.
@@ -1423,4 +1429,33 @@ model SampleAttachment {
 
   @@index([sampleId])
   @@map("sample_attachments")
+}
+
+// ─── Admin review (M15) ─────────────────────────────────────────────────────
+// Design pack §8/§16: Admin reviews a submitted lab report and rejects it (comment required, back
+// to the lab) or marks it ready to publish; a ready report can be sent back with a reason.
+
+enum ReviewDecision {
+  REJECTED
+  READY_TO_PUBLISH
+  REOPENED
+}
+
+model LabReportReview {
+  id         String         @id @default(uuid()) @db.Uuid
+  tenantId   String         @map("tenant_id") @db.Uuid
+  reportId   String         @map("report_id") @db.Uuid
+  /// The report version the decision was about.
+  version    Int
+  decision   ReviewDecision
+  comment    String?
+  reviewerId String?        @map("reviewer_id") @db.Uuid
+  decidedAt  DateTime       @default(now()) @map("decided_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  report   LabReport @relation(fields: [reportId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  reviewer User?     @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([reportId, decidedAt])
+  @@map("lab_report_reviews")
 }

@@ -12,6 +12,9 @@ import {
   addReportVersionSchema,
   createLabReportSchema,
   labReportListQuerySchema,
+  readyToPublishSchema,
+  rejectReportSchema,
+  reopenReviewSchema,
   type DownloadLinkDto,
   type LabReportDto,
   type LabReportListQuery,
@@ -69,6 +72,43 @@ export class LabReportsController {
     @Body(new ZodValidationPipe(addReportVersionSchema)) input: Out<typeof addReportVersionSchema>,
   ): Promise<LabReportDto> {
     return this.reports.addVersion(t, u, id, input);
+  }
+
+  // ─── Admin review ─────────────────────────────────────────────────────────
+
+  /** Back to the lab for correction; the comment says what to correct. */
+  @Post(':id/reject')
+  @RequirePermission('report.review')
+  reject(
+    @CurrentTenant() t: TenantContext,
+    @CurrentUser() u: AuthUser,
+    @uuid() id: string,
+    @Body(new ZodValidationPipe(rejectReportSchema)) input: Out<typeof rejectReportSchema>,
+  ): Promise<LabReportDto> {
+    return this.reports.review(t, u, id, 'REJECTED', input.comment);
+  }
+
+  /** Only reports marked ready appear on the Publish page (M16). */
+  @Post(':id/ready-to-publish')
+  @RequirePermission('report.review')
+  readyToPublish(
+    @CurrentTenant() t: TenantContext,
+    @CurrentUser() u: AuthUser,
+    @uuid() id: string,
+    @Body(new ZodValidationPipe(readyToPublishSchema)) input: Out<typeof readyToPublishSchema>,
+  ): Promise<LabReportDto> {
+    return this.reports.review(t, u, id, 'READY_TO_PUBLISH', input.comment ?? null);
+  }
+
+  @Post(':id/reopen-review')
+  @RequirePermission('report.review')
+  reopenReview(
+    @CurrentTenant() t: TenantContext,
+    @CurrentUser() u: AuthUser,
+    @uuid() id: string,
+    @Body(new ZodValidationPipe(reopenReviewSchema)) input: Out<typeof reopenReviewSchema>,
+  ): Promise<LabReportDto> {
+    return this.reports.review(t, u, id, 'REOPENED', input.reason);
   }
 
   @Get(':id/download-link')
