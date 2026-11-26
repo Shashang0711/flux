@@ -143,7 +143,7 @@ async function seed(api: Api): Promise<void> {
     }),
   );
   // Register the vessel-linked kit as a batch, so batches and samples have data.
-  await json(
+  const batch = await json(
     await api.post('/api/v1/samples/batches', {
       data: {
         serviceTypeId: seeded.serviceType.id,
@@ -152,6 +152,44 @@ async function seed(api: Api): Promise<void> {
           { kitId: seeded.id, values: { sampling_point: 'intake', date_sampled: '2026-11-20' } },
         ],
       },
+    }),
+  );
+  // Complete its results and upload a lab report, so reports have data.
+  const sample = batch.samples[0];
+  const st = await json(await api.get(`/api/v1/lab/service-types/${batch.serviceType.id}`));
+  const values: Record<string, unknown> = {
+    org_50: 2,
+    org_10_50: 1,
+    e_coli: 10,
+    enterococci: 5,
+    v_cholerae: 'pass',
+  };
+  await json(
+    await api.put(`/api/v1/samples/${sample.id}/results`, {
+      data: {
+        results: st.parameters.map((p: { id: string; key: string }) => ({
+          parameterId: p.id,
+          value: values[p.key],
+        })),
+      },
+    }),
+  );
+  await json(await api.post(`/api/v1/samples/${sample.id}/complete-results`));
+  const pdf = Buffer.from('%PDF-1.7\n%%EOF\n');
+  const intent = await json(
+    await api.post('/api/v1/files', {
+      data: { purpose: 'LAB_REPORT', name: 'seed-report.pdf', size: pdf.length },
+    }),
+  );
+  const file = await json(
+    await api.put(`/api/v1${intent.uploadPath}`, {
+      data: pdf,
+      headers: { 'Content-Type': 'application/octet-stream' },
+    }),
+  );
+  await json(
+    await api.post('/api/v1/lab-reports', {
+      data: { batchId: batch.id, sampleIds: [sample.id], fileId: file.id },
     }),
   );
 }

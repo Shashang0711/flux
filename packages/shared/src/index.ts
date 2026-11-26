@@ -19,3 +19,5 @@ export * from './lab/lab';
 export * from './receiving/receiving';
 export * from './samples/samples';
 export * from './testing/testing';
+export * from './files/files';
+export * from './reports/reports';

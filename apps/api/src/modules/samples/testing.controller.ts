@@ -1,9 +1,22 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
 import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
+import {
+  addAttachmentSchema,
   batchResultsInputSchema,
   dryRunQuerySchema,
   sampleResultsInputSchema,
   type BatchResultsDto,
+  type DownloadLinkDto,
+  type SampleAttachmentDto,
   type SampleResultsDto,
 } from '@flux/shared';
 import type { z } from 'zod';
@@ -57,6 +70,45 @@ export class TestingController {
     @uuid() id: string,
   ): Promise<SampleResultsDto> {
     return this.testing.reopenSample(t, u, id);
+  }
+
+  @Get(':id/attachments')
+  attachments(
+    @CurrentTenant() t: TenantContext,
+    @uuid() id: string,
+  ): Promise<SampleAttachmentDto[]> {
+    return this.testing.attachments(t, id);
+  }
+
+  @Post(':id/attachments')
+  @RequirePermission('sample.test')
+  addAttachment(
+    @CurrentTenant() t: TenantContext,
+    @CurrentUser() u: AuthUser,
+    @uuid() id: string,
+    @Body(new ZodValidationPipe(addAttachmentSchema)) input: Out<typeof addAttachmentSchema>,
+  ): Promise<SampleAttachmentDto[]> {
+    return this.testing.addAttachment(t, u, id, input);
+  }
+
+  @Delete(':id/attachments/:attachmentId')
+  @RequirePermission('sample.test')
+  removeAttachment(
+    @CurrentTenant() t: TenantContext,
+    @CurrentUser() u: AuthUser,
+    @uuid() id: string,
+    @uuid('attachmentId') attachmentId: string,
+  ): Promise<SampleAttachmentDto[]> {
+    return this.testing.removeAttachment(t, u, id, attachmentId);
+  }
+
+  @Get(':id/attachments/:attachmentId/download-link')
+  attachmentLink(
+    @CurrentTenant() t: TenantContext,
+    @uuid() id: string,
+    @uuid('attachmentId') attachmentId: string,
+  ): Promise<DownloadLinkDto> {
+    return this.testing.attachmentLink(t, id, attachmentId);
   }
 
   @Get('batches/:id/results')

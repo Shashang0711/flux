@@ -92,6 +92,10 @@ export const AUDIT_ACTIONS = {
   'sample.results_saved': 'Results saved',
   'sample.results_completed': 'Results completed',
   'sample.results_reopened': 'Results reopened',
+  'sample.attachment_added': 'Attachment added',
+  'sample.attachment_removed': 'Attachment removed',
+  'report.submitted': 'Lab report submitted',
+  'report.version_uploaded': 'Lab report file replaced',
   'fleet.created': 'Fleet created',
   'fleet.updated': 'Fleet updated',
   'fleet.activated': 'Fleet activated',
@@ -118,6 +122,7 @@ export const AUDIT_ENTITY_TYPES = [
   'received-kit',
   'batch',
   'sample',
+  'lab-report',
 ] as const;
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
 

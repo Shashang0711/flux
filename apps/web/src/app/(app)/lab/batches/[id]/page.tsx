@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import type { AuditLogDto, BatchDto } from '@flux/shared';
+import type { AuditLogDto, BatchDto, LabReportSummaryDto } from '@flux/shared';
 import { AuditTable } from '@/components/audit-table';
 import { DataTable } from '@/components/data-table';
 import { FieldValues, fieldSummary } from '@/components/field-values';
@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/page-header';
 import { FlagBadge } from '@/components/results';
 import { SampleStatusBadge } from '@/components/sample-status';
 import { loadOrNotFound, sessionWithPermission } from '@/lib/server-api';
+import { ReportTable, UploadReportForm } from '../../reports/report-forms';
 
 export const metadata: Metadata = { title: 'Batch · FLUX' };
 
@@ -19,6 +20,12 @@ export default async function BatchPage({ params }: { params: Promise<{ id: stri
   const { data: batch } = await loadOrNotFound<BatchDto>(`/samples/batches/${id}`);
   const batchFields = batch.fields.filter((f) => f.scope === 'BATCH');
   const sampleFields = batch.fields.filter((f) => f.scope === 'SAMPLE');
+  const permissions = session.access.permissions;
+  const canSeeReports = permissions.includes('report.view');
+  const canUpload = permissions.includes('report.upload');
+  const reports = canSeeReports
+    ? (await loadOrNotFound<LabReportSummaryDto[]>(`/lab-reports?batchId=${id}&pageSize=50`)).data
+    : [];
   const history = session.access.permissions.includes('audit.view')
     ? (await loadOrNotFound<AuditLogDto[]>(`/audit-logs?entityId=${id}&pageSize=20`)).data
     : null;
@@ -96,6 +103,15 @@ export default async function BatchPage({ params }: { params: Promise<{ id: stri
             { header: 'Flag', cell: (s) => <FlagBadge flag={s.worstFlag} /> },
           ]}
         />
+        {canSeeReports && (
+          <section className="card">
+            <h2 className="card-title">Lab reports</h2>
+            <div className="stack">
+              {reports.length > 0 && <ReportTable reports={reports} showBatch={false} />}
+              {canUpload && <UploadReportForm batch={batch} />}
+            </div>
+          </section>
+        )}
         {history && (
           <section className="card">
             <h2 className="card-title">History</h2>

@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "flux",
+      "credentials": [{ "accessKey": "flux", "secretKey": "flux-s3-dev-secret" }],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

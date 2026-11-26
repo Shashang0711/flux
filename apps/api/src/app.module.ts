@@ -8,9 +8,11 @@ import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module';
+import { FilesModule } from './modules/files/files.module';
 import { HealthModule } from './modules/health/health.module';
 import { LabModule } from './modules/lab/lab.module';
 import { ReceivingModule } from './modules/receiving/receiving.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { SamplesModule } from './modules/samples/samples.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { ReferenceDataModule } from './modules/reference-data/reference-data.module';
@@ -60,6 +62,8 @@ export const REQUEST_ID_HEADER = 'x-request-id';
     LabModule,
     ReceivingModule,
     SamplesModule,
+    FilesModule,
+    ReportsModule,
   ],
 })
 export class AppModule {}
