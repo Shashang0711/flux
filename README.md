@@ -141,6 +141,7 @@ renders the shell: a sidebar built from `lib/navigation.ts`, showing only what t
 | `/lab/batches/new?kits=…`        | `sample.register`                       | Register batch: batch fields once, vessel/client and sample fields per kit                            |
 | `/lab/batches/...`               | `sample.view`                           | Batches and their samples                                                                             |
 | `/lab/samples/...`               | `sample.view`                           | Samples with status colour, kit, AWB and registration details                                         |
+| `/lab/sample-update`             | `report.view`                           | Sample update: monthly/weekly/daily grid per vessel and service type, and a list view                 |
 | `/lab/testing`                   | `sample.view`                           | Under testing: Batch view and Sample view of open work                                                |
 | `/lab/batches/:id/results`       | `sample.view` (`sample.test` to edit)   | Results grid, CSV template download and upload with preview                                           |
 | `/lab/reports/...`               | `report.view`                           | Lab reports: list, versions, download, replace file; upload from the batch page                       |
@@ -543,6 +544,24 @@ publish.
   Without `SMTP_HOST`, emails are only logged. Docker Compose runs **Mailpit** (inbox at
   http://localhost:8025) so nothing leaves the machine.
 
+## Sample update
+
+Permission `report.view`, module `samples`. One page showing every registered sample, so
+the lab sees progress at a glance.
+
+- **Views:** _Monthly_ and _Weekly_ (Monday–Sunday) have one column per day; _Daily_ has one
+  column per hour. Rows are **vessel + service type**; samples without a vessel get a row per
+  client + service type, after the vessel rows. Cells show coloured counts, and clicking one opens
+  the **List** view for that day with the row's filters.
+- **Colour** follows the same rule as the samples list (`sampleColour`): no report or a rejected
+  report = **red**, submitted or ready to publish = **yellow**, published = **green**. The List
+  view can filter by colour.
+- **Date:** a sample is placed by when it was **registered**, in the viewer's time zone. The web
+  app stores the browser's zone in the `flux_tz` cookie and passes it as `timeZone` (an IANA name;
+  default UTC). Bucketing is done in SQL (`AT TIME ZONE`), so days never shift at midnight UTC.
+- **Filters:** client, vessel (or `noVessel=true`), service type. Options list only those that
+  have samples.
+
 ## Custom fields
 
 Tenants add their own fields to records (Admin → Custom fields, `custom-field.manage`). Record
@@ -694,6 +713,9 @@ When adding a feature that changes data:
 | `GET /api/v1/lab-reports/:id/final-download-link`                                                         | `report.view`                           | Download link for the final report                                                                          |
 | `GET /api/v1/lab-reports/:id/notifications`                                                               | `report.view`                           | Notifications raised by publishing, with deliveries                                                         |
 | `POST /api/v1/lab-reports/:id/notifications/retry`                                                        | `report.publish`                        | Re-queue failed deliveries                                                                                  |
+| `GET /api/v1/sample-updates?view=&date=&timeZone=&clientId=&vesselId=&noVessel=&serviceTypeId=`           | `report.view`                           | Sample update grid: columns, rows per vessel/service type with colour counts, totals                        |
+| `GET /api/v1/sample-updates/list?…&day=&colour=&page=`                                                    | `report.view`                           | Samples behind the grid (period or one day), newest first                                                   |
+| `GET /api/v1/sample-updates/options`                                                                      | `report.view`                           | Clients, vessels and service types that have samples                                                        |
 | `GET /api/v1/lab-reports/:id/download-link`, `…/versions/:n/download-link`                                | `report.view`                           | Short-lived download links                                                                                  |
 | `GET/POST /api/v1/samples/:id/attachments`, `DELETE …/:attachmentId`, `GET …/:attachmentId/download-link` | `sample.view` / `sample.test`           | Sample attachments                                                                                          |
 | `GET /api/v1/clients/:id/vessels`                                                                         | `vessel.view`                           | Vessels linked to a client                                                                                  |
