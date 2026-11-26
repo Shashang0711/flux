@@ -26,18 +26,21 @@ export const SAMPLE_INCLUDE = {
     },
   },
   results: { select: { flag: true } },
+  labReportLinks: { select: { report: { select: { id: true, code: true, status: true } } } },
 } satisfies Prisma.SampleInclude;
 
 export type SampleRow = Prisma.SampleGetPayload<{ include: typeof SAMPLE_INCLUDE }>;
 
 export function toSampleSummaryDto(s: SampleRow): SampleSummaryDto {
   const { airwayBill: _awb, ...kit } = s.receivedKit;
+  const labReport = s.labReportLinks[0]?.report ?? null;
   return {
     id: s.id,
     code: s.code,
     status: s.status,
-    colour: sampleColour(s),
+    colour: sampleColour({ status: s.status, labReport }),
     worstFlag: worstFlag(s.results.map((r) => r.flag)),
+    labReport,
     batch: s.batch,
     serviceType: s.serviceType,
     client: s.client,

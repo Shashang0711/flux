@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import type { SampleDto, SampleResultsDto } from '@flux/shared';
+import type { SampleAttachmentDto, SampleDto, SampleResultsDto } from '@flux/shared';
 import { FieldValues } from '@/components/field-values';
 import { Forbidden } from '@/components/forbidden';
 import { PageHeader } from '@/components/page-header';
 import { SampleStatusBadge } from '@/components/sample-status';
 import { loadOrNotFound, sessionWithPermission } from '@/lib/server-api';
 import { FlagBadge } from '@/components/results';
+import { SampleAttachments } from './sample-attachments';
 import { SampleResults } from './sample-results';
 
 export const metadata: Metadata = { title: 'Sample · FLUX' };
@@ -15,10 +16,12 @@ export default async function SamplePage({ params }: { params: Promise<{ id: str
   const { session, allowed } = await sessionWithPermission('sample.view');
   if (!allowed) return <Forbidden />;
   const { id } = await params;
-  const [{ data: s }, { data: results }] = await Promise.all([
+  const [{ data: s }, { data: results }, { data: attachments }] = await Promise.all([
     loadOrNotFound<SampleDto>(`/samples/${id}`),
     loadOrNotFound<SampleResultsDto>(`/samples/${id}/results`),
+    loadOrNotFound<SampleAttachmentDto[]>(`/samples/${id}/attachments`),
   ]);
+  const permissions = session.access.permissions;
   return (
     <>
       <PageHeader
@@ -63,6 +66,20 @@ export default async function SamplePage({ params }: { params: Promise<{ id: str
               </dd>
             </div>
             <div>
+              <dt>Lab report</dt>
+              <dd>
+                {s.labReport ? (
+                  permissions.includes('report.view') ? (
+                    <Link href={`/lab/reports/${s.labReport.id}`}>{s.labReport.code}</Link>
+                  ) : (
+                    s.labReport.code
+                  )
+                ) : (
+                  '—'
+                )}
+              </dd>
+            </div>
+            <div>
               <dt>Received under</dt>
               <dd>
                 <Link href={`/lab/receiving/${s.airwayBill.id}`}>AWB {s.airwayBill.number}</Link>
@@ -82,9 +99,14 @@ export default async function SamplePage({ params }: { params: Promise<{ id: str
         </section>
         <section className="card" id="results">
           <h2 className="card-title">Results</h2>
-          <SampleResults
-            data={results}
-            canTest={session.access.permissions.includes('sample.test')}
+          <SampleResults data={results} canTest={permissions.includes('sample.test')} />
+        </section>
+        <section className="card">
+          <h2 className="card-title">Attachments</h2>
+          <SampleAttachments
+            sampleId={s.id}
+            attachments={attachments}
+            canEdit={permissions.includes('sample.test') && !s.labReport}
           />
         </section>
         <section className="card">

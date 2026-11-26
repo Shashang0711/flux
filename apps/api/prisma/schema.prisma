@@ -80,6 +80,12 @@ model Tenant {
   testParameters TestParameter[]
   sampleResults  SampleResult[]
 
+  files             StoredFile[]
+  labReports        LabReport[]
+  labReportVersions LabReportVersion[]
+  labReportSamples  LabReportSample[]
+  sampleAttachments SampleAttachment[]
+
   @@map("tenants")
 }
 
@@ -127,6 +133,8 @@ model User {
   registeredBatches RegistrationBatch[]
 
   enteredResults SampleResult[]
+
+  uploadedFiles StoredFile[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -897,6 +905,8 @@ model ServiceType {
 
   parameters TestParameter[]
 
+  labReports LabReport[]
+
   @@unique([tenantId, code])
   @@unique([id, tenantId])
   @@index([categoryId])
@@ -1159,6 +1169,8 @@ model RegistrationBatch {
   registeredBy User?       @relation(fields: [registeredById], references: [id], onDelete: SetNull)
   samples      Sample[]
 
+  labReports LabReport[]
+
   @@unique([tenantId, code])
   @@unique([id, tenantId])
   /// Target for samples, pinning each sample to its batch's service type.
@@ -1196,6 +1208,12 @@ model Sample {
   results SampleResult[]
 
   /// Target for sample_results, pinning a result's parameter to the sample's service type.
+  labReportLinks LabReportSample[]
+  attachments    SampleAttachment[]
+
+  /// Target for lab_report_samples, pinning a covered sample to the report's batch.
+  @@unique([id, batchId])
+  @@unique([id, tenantId])
   @@unique([id, serviceTypeId])
   @@unique([tenantId, code])
   @@index([batchId])
@@ -1279,4 +1297,130 @@ model SampleResult {
   @@unique([sampleId, parameterId])
   @@index([parameterId])
   @@map("sample_results")
+}
+
+// ─── Files and lab reports (M14) ────────────────────────────────────────────
+// Design pack §20: staged uploads to private storage (the database keeps metadata and the
+// object key). Lab reports cover one or more samples of one batch; each upload is a version.
+
+enum FilePurpose {
+  LAB_REPORT
+  RESULT_ATTACHMENT
+}
+
+enum FileStatus {
+  PENDING
+  READY
+}
+
+enum LabReportStatus {
+  SUBMITTED
+  REJECTED
+  READY_TO_PUBLISH
+}
+
+model StoredFile {
+  id           String      @id @default(uuid()) @db.Uuid
+  tenantId     String      @map("tenant_id") @db.Uuid
+  purpose      FilePurpose
+  status       FileStatus  @default(PENDING)
+  /// Original file name (sanitised), shown and used for downloads.
+  name         String
+  /// Declared at intent; the stored size once uploaded.
+  size         Int
+  /// Detected from the content on upload.
+  contentType  String?     @map("content_type")
+  sha256       String?
+  /// Object key in storage: <tenant>/<file id>.
+  storageKey   String      @map("storage_key")
+  uploadedById String?     @map("uploaded_by_id") @db.Uuid
+  createdAt    DateTime    @default(now()) @map("created_at")
+  uploadedAt   DateTime?   @map("uploaded_at")
+
+  tenant         Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  uploadedBy     User?              @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  reportVersions LabReportVersion[]
+  attachments    SampleAttachment[]
+
+  @@unique([id, tenantId])
+  @@unique([storageKey])
+  @@index([tenantId, status])
+  @@map("files")
+}
+
+model LabReport {
+  id             String          @id @default(uuid()) @db.Uuid
+  tenantId       String          @map("tenant_id") @db.Uuid
+  code           String
+  batchId        String          @map("batch_id") @db.Uuid
+  serviceTypeId  String          @map("service_type_id") @db.Uuid
+  status         LabReportStatus @default(SUBMITTED)
+  currentVersion Int             @default(1) @map("current_version")
+  submittedAt    DateTime        @default(now()) @map("submitted_at")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  batch       RegistrationBatch  @relation(fields: [batchId, serviceTypeId], references: [id, serviceTypeId], onDelete: Restrict, onUpdate: NoAction)
+  serviceType ServiceType        @relation(fields: [serviceTypeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  versions    LabReportVersion[]
+  samples     LabReportSample[]
+
+  @@unique([tenantId, code])
+  @@unique([id, tenantId])
+  /// Target for lab_report_samples.
+  @@unique([id, batchId])
+  @@index([tenantId, status])
+  @@index([batchId])
+  @@map("lab_reports")
+}
+
+model LabReportVersion {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  reportId     String   @map("report_id") @db.Uuid
+  version      Int
+  fileId       String   @unique @map("file_id") @db.Uuid
+  note         String?
+  uploadedById String?  @map("uploaded_by_id") @db.Uuid
+  uploadedAt   DateTime @default(now()) @map("uploaded_at")
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  report LabReport  @relation(fields: [reportId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  file   StoredFile @relation(fields: [fileId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([reportId, version])
+  @@map("lab_report_versions")
+}
+
+/// Which samples a report covers; a sample is in at most one report.
+model LabReportSample {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  reportId String @map("report_id") @db.Uuid
+  batchId  String @map("batch_id") @db.Uuid
+  sampleId String @unique @map("sample_id") @db.Uuid
+
+  tenant Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  report LabReport @relation(fields: [reportId, batchId], references: [id, batchId], onDelete: Restrict, onUpdate: NoAction)
+  sample Sample    @relation(fields: [sampleId, batchId], references: [id, batchId], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([reportId])
+  @@map("lab_report_samples")
+}
+
+model SampleAttachment {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  sampleId  String   @map("sample_id") @db.Uuid
+  fileId    String   @unique @map("file_id") @db.Uuid
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  sample Sample     @relation(fields: [sampleId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  file   StoredFile @relation(fields: [fileId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@index([sampleId])
+  @@map("sample_attachments")
 }

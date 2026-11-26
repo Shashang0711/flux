@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { CustomFieldValues } from '../custom-fields/custom-fields';
 import type { RegistrationFieldDto } from '../lab/lab';
+import type { LabReportStatus } from '../reports/reports';
 import type { ResultFlag } from '../testing/testing';
 import {
   createAirwayBillSchema,
@@ -28,12 +29,11 @@ export type SampleStatus = (typeof SampleStatus)[keyof typeof SampleStatus];
 
 /**
  * Sample Update colours (design pack §9): red once registered, yellow when the lab report is
- * uploaded, green when published. Computed from state, never stored; report states arrive with
- * M14–M16, so every sample is red until then.
+ * uploaded, green when the final report is published (M16). Computed from state, never stored.
  */
 export type SampleColour = 'red' | 'yellow' | 'green';
-export function sampleColour(_sample: { status: SampleStatus }): SampleColour {
-  return 'red';
+export function sampleColour(sample: { status: SampleStatus; labReport?: unknown }): SampleColour {
+  return sample.labReport ? 'yellow' : 'red';
 }
 
 /** B26-00001 */
@@ -71,6 +71,8 @@ export interface SampleSummaryDto {
   colour: SampleColour;
   /** Worst result flag so far (null: no flagged results). */
   worstFlag: ResultFlag | null;
+  /** The lab report covering this sample, once uploaded. */
+  labReport: { id: string; code: string; status: LabReportStatus } | null;
   batch: { id: string; code: string };
   serviceType: Ref;
   client: Ref;

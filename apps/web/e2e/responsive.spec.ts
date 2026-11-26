@@ -44,6 +44,7 @@ test.describe('tenant admin pages fit every screen', () => {
     '/lab/testing',
     '/lab/testing?view=samples',
     '/lab/batches',
+    '/lab/reports',
     '/lab/batches/new',
     '/lab/samples',
     '/account',
@@ -90,6 +91,7 @@ test.describe('tenant admin pages fit every screen', () => {
     const batch = await firstRecordHref(page, '/lab/batches');
     await checkPage(page, batch);
     await checkPage(page, `${batch}/results`);
+    await checkPage(page, await firstRecordHref(page, '/lab/reports'));
     await checkPage(page, await firstRecordHref(page, '/lab/samples'));
   });
 

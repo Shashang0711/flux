@@ -387,3 +387,79 @@ test('upload batch results from a CSV, preview the flags, then save', async ({ p
   await expect(grid.getByLabel(`Viable organisms ≥ 50 µm for ${b!.code}`)).toHaveValue('40');
   await expect(grid.locator('tbody tr').nth(1)).toContainText('Critical');
 });
+
+const PDF = Buffer.from('%PDF-1.7\n1 0 obj << >> endobj\n%%EOF\n');
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+
+/** Completes all results of a sample through the API (every Ballast Water parameter passing). */
+async function completeResults(page: Page, sampleId: string) {
+  const res = await (await page.request.get(`/api/v1/samples/${sampleId}/results`)).json();
+  const values: Record<string, unknown> = {
+    org_50: 2,
+    org_10_50: 1,
+    e_coli: 10,
+    enterococci: 5,
+    v_cholerae: 'pass',
+  };
+  const put = await page.request.put(`/api/v1/samples/${sampleId}/results`, {
+    data: {
+      results: res.data.parameters.map((p: { id: string; key: string }) => ({
+        parameterId: p.id,
+        value: values[p.key],
+      })),
+    },
+  });
+  expect(put.ok()).toBe(true);
+  expect((await page.request.post(`/api/v1/samples/${sampleId}/complete-results`)).ok()).toBe(true);
+}
+
+test('upload a lab report for a batch; its samples turn yellow; download it', async ({
+  page,
+}, info) => {
+  const batch = await ballastBatch(
+    page,
+    `L${info.project.name.slice(0, 1).toUpperCase()}${Date.now().toString(36).toUpperCase()}`,
+  );
+  for (const s of batch.samples) await completeResults(page, s.id);
+
+  await page.goto(`/lab/batches/${batch.id}`);
+  await page
+    .getByLabel('Report (PDF)')
+    .setInputFiles({ name: 'ballast-report.pdf', mimeType: 'application/pdf', buffer: PDF });
+  await page.getByLabel('Note for the reviewer').fill('Both samples');
+  await page.getByRole('button', { name: 'Submit report for 2 samples' }).click();
+  const reports = page.getByRole('table', { name: 'Lab reports' });
+  await expect(reports.locator('tbody tr')).toHaveCount(1);
+  await expect(reports).toContainText('Awaiting review');
+  await expect(
+    page.getByRole('table', { name: 'Samples' }).getByText('Lab report uploaded'),
+  ).toHaveCount(2);
+
+  const download = page.waitForEvent('download');
+  await reports.getByRole('button', { name: 'Download' }).click();
+  expect((await download).suggestedFilename()).toBe('ballast-report.pdf');
+});
+
+test('attach a photo to a sample, download it and remove it', async ({ page }, info) => {
+  const batch = await ballastBatch(
+    page,
+    `A${info.project.name.slice(0, 1).toUpperCase()}${Date.now().toString(36).toUpperCase()}`,
+    1,
+  );
+  await page.goto(`/lab/samples/${batch.samples[0]!.id}`);
+  const attachments = page.getByRole('table', { name: 'Attachments' });
+  await page
+    .getByLabel('Add a file')
+    .setInputFiles({ name: 'microscope.png', mimeType: 'image/png', buffer: PNG });
+  await page.getByLabel('Note', { exact: true }).fill('Slide 3');
+  await page.getByRole('button', { name: 'Add attachment' }).click();
+  await expect(attachments).toContainText('microscope.png');
+
+  const download = page.waitForEvent('download');
+  await attachments.getByRole('button', { name: 'Download' }).click();
+  expect((await download).suggestedFilename()).toBe('microscope.png');
+
+  page.once('dialog', (d) => d.accept());
+  await attachments.getByRole('button', { name: 'Remove' }).click();
+  await expect(page.getByText('No attachments.')).toBeVisible();
+});

@@ -18,6 +18,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1166.0",
     "@flux/shared": "*",
     "@nestjs/common": "^11.2.11",
     "@nestjs/config": "^4.0.4",

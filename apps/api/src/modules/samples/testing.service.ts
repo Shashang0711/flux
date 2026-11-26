@@ -7,7 +7,9 @@ import {
   parseResultValue,
   worstFlag,
   type BatchResultsDto,
+  type DownloadLinkDto,
   type FieldIssue,
+  type SampleAttachmentDto,
   type ResultValue,
   type SampleResultDto,
   type SampleResultsDto,
@@ -16,6 +18,7 @@ import { AppException } from '../../common/errors/app.exception';
 import { TenantDb, type TenantTx } from '../../database/tenant-db.service';
 import { recordAudit } from '../audit/audit';
 import type { AuthUser, TenantContext } from '../auth/auth.types';
+import { FilesService, toFileDto } from '../files/files.service';
 import { PARAMETER_ORDER, toParameterDto } from '../lab/lab.mapper';
 
 type Entry = { parameterId: string; value: string | number | boolean | null };
@@ -56,7 +59,10 @@ function toResultDto(r: ResultRow): SampleResultDto {
  */
 @Injectable()
 export class TestingService {
-  constructor(private readonly db: TenantDb) {}
+  constructor(
+    private readonly db: TenantDb,
+    private readonly files: FilesService,
+  ) {}
 
   // ─── Individual sample ────────────────────────────────────────────────────
 
@@ -100,6 +106,7 @@ export class TestingService {
   reopenSample(ctx: TenantContext, user: AuthUser, sampleId: string): Promise<SampleResultsDto> {
     return this.db.run(ctx.tenantId, async (tx) => {
       const sample = await this.findSample(tx, sampleId);
+      await this.assertNotReported(tx, sampleId, 'Its results cannot be reopened');
       if (sample.status === 'RESULTS_ENTERED')
         await this.setCompleted(tx, ctx, user, [sampleId], false);
       return this.sampleDto(tx, sampleId);
@@ -202,6 +209,112 @@ export class TestingService {
         );
       return this.batchDto(tx, batchId);
     });
+  }
+
+  // ─── Attachments ──────────────────────────────────────────────────────────
+
+  attachments(ctx: TenantContext, sampleId: string): Promise<SampleAttachmentDto[]> {
+    return this.db.run(ctx.tenantId, async (tx) => {
+      await this.findSample(tx, sampleId);
+      return this.attachmentList(tx, sampleId);
+    });
+  }
+
+  /** Supporting files (printouts, photos) until the sample is in a lab report. */
+  addAttachment(
+    ctx: TenantContext,
+    user: AuthUser,
+    sampleId: string,
+    input: { fileId: string; note?: string | null },
+  ): Promise<SampleAttachmentDto[]> {
+    return this.db.run(ctx.tenantId, async (tx) => {
+      const sample = await this.findSample(tx, sampleId);
+      await this.assertNotReported(tx, sampleId, 'Attachments can no longer change');
+      const file = await this.files.claim(tx, user, input.fileId, 'RESULT_ATTACHMENT');
+      await tx.sampleAttachment.create({
+        data: { tenantId: ctx.tenantId, sampleId, fileId: file.id, note: input.note ?? null },
+      });
+      await recordAudit(tx, {
+        tenantId: ctx.tenantId,
+        actor: user,
+        action: 'sample.attachment_added',
+        entity: { type: 'sample', id: sampleId, label: sample.code },
+        relatedIds: [sample.batchId, file.id],
+        changes: { attachment: { from: null, to: file.name } },
+      });
+      return this.attachmentList(tx, sampleId);
+    });
+  }
+
+  removeAttachment(
+    ctx: TenantContext,
+    user: AuthUser,
+    sampleId: string,
+    attachmentId: string,
+  ): Promise<SampleAttachmentDto[]> {
+    return this.db.run(ctx.tenantId, async (tx) => {
+      const sample = await this.findSample(tx, sampleId);
+      await this.assertNotReported(tx, sampleId, 'Attachments can no longer change');
+      const attachment = await tx.sampleAttachment.findFirst({
+        where: { id: attachmentId, sampleId },
+        include: { file: true },
+      });
+      if (!attachment) throw AppException.notFound('Attachment', attachmentId);
+      await tx.sampleAttachment.delete({ where: { id: attachmentId } });
+      await recordAudit(tx, {
+        tenantId: ctx.tenantId,
+        actor: user,
+        action: 'sample.attachment_removed',
+        entity: { type: 'sample', id: sampleId, label: sample.code },
+        relatedIds: [sample.batchId, attachment.fileId],
+        changes: { attachment: { from: attachment.file.name, to: null } },
+      });
+      return this.attachmentList(tx, sampleId);
+    });
+  }
+
+  attachmentLink(
+    ctx: TenantContext,
+    sampleId: string,
+    attachmentId: string,
+  ): Promise<DownloadLinkDto> {
+    return this.db.run(ctx.tenantId, async (tx) => {
+      const attachment = await tx.sampleAttachment.findFirst({
+        where: { id: attachmentId, sampleId },
+      });
+      if (!attachment) throw AppException.notFound('Attachment', attachmentId);
+      return this.files.link(attachment.fileId);
+    });
+  }
+
+  private async attachmentList(tx: TenantTx, sampleId: string): Promise<SampleAttachmentDto[]> {
+    const rows = await tx.sampleAttachment.findMany({
+      where: { sampleId },
+      include: { file: { include: { uploadedBy: { select: { name: true } } } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    return rows.map((a) => ({
+      id: a.id,
+      file: toFileDto(a.file),
+      note: a.note,
+      createdAt: a.createdAt.toISOString(),
+    }));
+  }
+
+  /** Once a lab report covers a sample, its results and attachments are what was reported. */
+  private async assertNotReported(
+    tx: TenantTx,
+    sampleId: string,
+    consequence: string,
+  ): Promise<void> {
+    const link = await tx.labReportSample.findUnique({
+      where: { sampleId },
+      include: { report: { select: { code: true } } },
+    });
+    if (link)
+      throw AppException.badRequest(
+        `This sample is in lab report ${link.report.code}. ${consequence}.`,
+      );
   }
 
   // ─── Core ─────────────────────────────────────────────────────────────────

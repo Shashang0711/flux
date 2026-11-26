@@ -31,7 +31,7 @@ export async function resetDatabase(prisma: PrismaService): Promise<void> {
   const db = rows[0]?.db ?? '';
   if (!db.endsWith('_test')) throw new Error(`Refusing to truncate non-test database "${db}"`);
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "sample_results", "test_parameters", "samples", "registration_batches", "received_kits", "airway_bills", "variant_bottle_configs", "product_bottle_configs", "product_variants", "product_service_types", "products", "bottle_types", "service_type_fields", "service_types", "lab_categories", ' +
+    'TRUNCATE TABLE "sample_attachments", "lab_report_samples", "lab_report_versions", "lab_reports", "files", "sample_results", "test_parameters", "samples", "registration_batches", "received_kits", "airway_bills", "variant_bottle_configs", "product_bottle_configs", "product_variants", "product_service_types", "products", "bottle_types", "service_type_fields", "service_types", "lab_categories", ' +
       '"vessel_notification_override_vessel_contacts", "vessel_notification_override_contacts", "vessel_notification_overrides", ' +
       '"vessel_hidden_client_contacts", "vessel_contacts", "vessel_billing_overrides", "client_notification_rule_contacts", "client_notification_rules", ' +
       '"fleet_vessels", "fleets", "vessel_client_relationships", "vessels", "custom_field_definitions", "billing_parties", "client_contacts", "client_addresses", "clients", ' +
