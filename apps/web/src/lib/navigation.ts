@@ -47,6 +47,12 @@ export const NAVIGATION: NavGroup[] = [
   {
     label: 'Samples',
     items: [
+      {
+        href: '/lab/sample-update',
+        label: 'Sample update',
+        icon: 'calendar',
+        permission: 'report.view',
+      },
       { href: '/lab/receiving', label: 'Receiving', icon: 'inbox', permission: 'receiving.view' },
       {
         href: '/lab/receive-register',

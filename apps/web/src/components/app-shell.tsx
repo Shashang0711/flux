@@ -6,6 +6,7 @@ import { Icon } from './icons';
 import { LogoutButton } from './logout-button';
 import { NavLink } from './nav-link';
 import { ShellFrame } from './shell-frame';
+import { TimeZoneCookie } from './time-zone-cookie';
 import styles from './app-shell.module.css';
 
 function initials(name: string): string {
@@ -73,6 +74,7 @@ export function AppShell({ session, children }: { session: SessionInfo; children
       }
     >
       {children}
+      <TimeZoneCookie />
     </ShellFrame>
   );
 }

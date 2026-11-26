@@ -623,3 +623,37 @@ test('publish a ready report: final PDF, samples green, notifications listed', a
   await page.goto(`/lab/samples/${sampleId}`);
   await expect(page.locator('main').getByText('Report published')).toBeVisible();
 });
+
+test('sample update: monthly grid by vessel and service, drill into a day, filter by colour', async ({
+  page,
+}) => {
+  await page.goto('/lab/sample-update');
+  const grid = page.getByRole('table', { name: 'Sample update' });
+  await expect(grid).toBeVisible();
+  const row = grid
+    .locator('tbody tr')
+    .filter({ hasText: 'Aegean Star' })
+    .filter({ hasText: 'Ballast Water' });
+  await expect(row).toHaveCount(1);
+
+  // Today's cell opens the list for that vessel, service type and day.
+  await row.getByRole('link').first().click();
+  await expect(page).toHaveURL(/view=list.*day=\d{4}-\d{2}-\d{2}/);
+  const samples = page.getByRole('table', { name: 'Samples' }).locator('tbody tr');
+  await expect(samples.first()).toContainText('Aegean Star');
+  await expect(page.getByText(/^Registered on/)).toBeVisible();
+
+  // Colours: earlier flows published reports today, so green samples exist.
+  await page
+    .getByRole('navigation', { name: 'Colour' })
+    .getByRole('link', { name: 'Final report published' })
+    .click();
+  await expect(samples.first()).toContainText('Report published');
+  await page
+    .getByRole('navigation', { name: 'View' })
+    .getByRole('link', { name: 'Weekly' })
+    .click();
+  await expect(page.getByRole('table', { name: 'Sample update' }).locator('thead th')).toHaveCount(
+    9,
+  ); // name + 7 days + total
+});
