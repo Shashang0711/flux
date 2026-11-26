@@ -37,7 +37,8 @@ export function sampleColour(sample: {
   status: SampleStatus;
   labReport?: { status: string } | null;
 }): SampleColour {
-  return sample.labReport && sample.labReport.status !== 'REJECTED' ? 'yellow' : 'red';
+  if (!sample.labReport || sample.labReport.status === 'REJECTED') return 'red';
+  return sample.labReport.status === 'PUBLISHED' ? 'green' : 'yellow';
 }
 
 /** B26-00001 */

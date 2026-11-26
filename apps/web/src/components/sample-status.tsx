@@ -28,11 +28,13 @@ export function SampleStatusBadge({
   // Yellow and green are report milestones on top of the testing status; a rejected report
   // sends the sample back to the lab (red).
   const label =
-    colour === 'yellow'
-      ? 'Lab report uploaded'
-      : reportStatus === 'REJECTED'
-        ? 'Report rejected'
-        : LABEL[status];
+    colour === 'green'
+      ? 'Report published'
+      : colour === 'yellow'
+        ? 'Lab report uploaded'
+        : reportStatus === 'REJECTED'
+          ? 'Report rejected'
+          : LABEL[status];
   return (
     <span className={`badge ${TONE[colour]}`} title={`${colour} — ${label}`}>
       <span aria-hidden="true">●</span> {label}

@@ -12,6 +12,7 @@ import {
   addReportVersionSchema,
   createLabReportSchema,
   labReportListQuerySchema,
+  publishReportSchema,
   readyToPublishSchema,
   rejectReportSchema,
   reopenReviewSchema,
@@ -19,6 +20,7 @@ import {
   type LabReportDto,
   type LabReportListQuery,
   type LabReportSummaryDto,
+  type NotificationDto,
   type PageQuery,
 } from '@flux/shared';
 import type { z } from 'zod';
@@ -109,6 +111,40 @@ export class LabReportsController {
     @Body(new ZodValidationPipe(reopenReviewSchema)) input: Out<typeof reopenReviewSchema>,
   ): Promise<LabReportDto> {
     return this.reports.review(t, u, id, 'REOPENED', input.reason);
+  }
+
+  // ─── Publishing ───────────────────────────────────────────────────────────
+
+  /** Releases the final report (PDF), turns the samples green and sends the notifications. */
+  @Post(':id/publish')
+  @RequirePermission('report.publish')
+  publish(
+    @CurrentTenant() t: TenantContext,
+    @CurrentUser() u: AuthUser,
+    @uuid() id: string,
+    @Body(new ZodValidationPipe(publishReportSchema)) input: Out<typeof publishReportSchema>,
+  ): Promise<LabReportDto> {
+    return this.reports.publish(t, u, id, input);
+  }
+
+  @Get(':id/final-download-link')
+  finalLink(@CurrentTenant() t: TenantContext, @uuid() id: string): Promise<DownloadLinkDto> {
+    return this.reports.finalDownloadLink(t, id);
+  }
+
+  @Get(':id/notifications')
+  notifications(@CurrentTenant() t: TenantContext, @uuid() id: string): Promise<NotificationDto[]> {
+    return this.reports.notificationsOf(t, id);
+  }
+
+  @Post(':id/notifications/retry')
+  @RequirePermission('report.publish')
+  retry(
+    @CurrentTenant() t: TenantContext,
+    @CurrentUser() u: AuthUser,
+    @uuid() id: string,
+  ): Promise<NotificationDto[]> {
+    return this.reports.retryNotifications(t, u, id);
   }
 
   @Get(':id/download-link')

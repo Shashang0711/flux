@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import type { AuditLogDto, LabReportDto } from '@flux/shared';
+import type { AuditLogDto, LabReportDto, NotificationDto } from '@flux/shared';
 import { AuditTable } from '@/components/audit-table';
 import { DataTable } from '@/components/data-table';
 import { EditDialog } from '@/components/edit-dialog';
@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/page-header';
 import { formatBytes } from '@/lib/files';
 import { loadOrNotFound, sessionWithPermission } from '@/lib/server-api';
 import { ReplaceFileForm, ReportStatusBadge } from '../report-forms';
+import { NotificationsTable, PublishForm } from '../publish-panel';
 import { ReviewPanel } from '../review-panel';
 
 export const metadata: Metadata = { title: 'Lab report · FLUX' };
@@ -20,9 +21,16 @@ export default async function LabReportPage({ params }: { params: Promise<{ id: 
   const { id } = await params;
   const { data: report } = await loadOrNotFound<LabReportDto>(`/lab-reports/${id}`);
   const permissions = session.access.permissions;
-  const canUpload = permissions.includes('report.upload') && report.status !== 'READY_TO_PUBLISH';
+  const canUpload =
+    permissions.includes('report.upload') &&
+    (report.status === 'SUBMITTED' || report.status === 'REJECTED');
   const canReview = permissions.includes('report.review');
   const lastRejection = report.reviews.find((r) => r.decision === 'REJECTED');
+  const canPublish = permissions.includes('report.publish');
+  const notifications =
+    report.status === 'PUBLISHED'
+      ? (await loadOrNotFound<NotificationDto[]>(`/lab-reports/${id}/notifications`)).data
+      : [];
   const history = permissions.includes('audit.view')
     ? (await loadOrNotFound<AuditLogDto[]>(`/audit-logs?entityId=${id}&pageSize=20`)).data
     : null;
@@ -64,6 +72,40 @@ export default async function LabReportPage({ params }: { params: Promise<{ id: 
             Correct the results of the samples if needed (their results can be reopened now), then
             use <em>Replace file</em> to upload the corrected report.
           </div>
+        )}
+        {report.published && (
+          <section className="card" aria-label="Published">
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <h2 className="card-title" style={{ margin: 0 }}>
+                Published
+              </h2>
+              <DownloadButton
+                linkPath={`/lab-reports/${id}/final-download-link`}
+                label="Download final report"
+              />
+            </div>
+            <p className="muted" style={{ marginBottom: 0 }}>
+              {report.published.file.name} ·{' '}
+              {new Date(report.published.at).toLocaleString('en-GB', {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              })}
+              {report.published.by ? ` by ${report.published.by}` : ''}
+              {report.published.note ? ` · ${report.published.note}` : ''}
+            </p>
+          </section>
+        )}
+        {report.status === 'PUBLISHED' && (
+          <section className="card" aria-label="Notifications">
+            <h2 className="card-title">Notifications</h2>
+            <NotificationsTable reportId={id} notifications={notifications} canRetry={canPublish} />
+          </section>
+        )}
+        {canPublish && report.status === 'READY_TO_PUBLISH' && (
+          <section className="card" aria-label="Publish">
+            <h2 className="card-title">Publish</h2>
+            <PublishForm report={report} />
+          </section>
         )}
         {canReview && (report.status === 'SUBMITTED' || report.status === 'READY_TO_PUBLISH') && (
           <section className="card" aria-label="Review">

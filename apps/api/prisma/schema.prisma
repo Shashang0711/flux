@@ -88,6 +88,9 @@ model Tenant {
 
   labReportReviews LabReportReview[]
 
+  notifications          Notification[]
+  notificationDeliveries NotificationDelivery[]
+
   @@map("tenants")
 }
 
@@ -139,6 +142,8 @@ model User {
   uploadedFiles StoredFile[]
 
   reportReviews LabReportReview[]
+
+  publishedReports LabReport[] @relation("PublishedReports")
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -1309,6 +1314,7 @@ model SampleResult {
 
 enum FilePurpose {
   LAB_REPORT
+  FINAL_REPORT
   RESULT_ATTACHMENT
 }
 
@@ -1321,6 +1327,7 @@ enum LabReportStatus {
   SUBMITTED
   REJECTED
   READY_TO_PUBLISH
+  PUBLISHED
 }
 
 model StoredFile {
@@ -1346,6 +1353,9 @@ model StoredFile {
   reportVersions LabReportVersion[]
   attachments    SampleAttachment[]
 
+  finalReports  LabReport[]    @relation("FinalReport")
+  notifications Notification[]
+
   @@unique([id, tenantId])
   @@unique([storageKey])
   @@index([tenantId, status])
@@ -1361,14 +1371,22 @@ model LabReport {
   status         LabReportStatus @default(SUBMITTED)
   currentVersion Int             @default(1) @map("current_version")
   submittedAt    DateTime        @default(now()) @map("submitted_at")
+  /// Publishing (M16): the final report released to the client.
+  finalFileId    String?         @unique @map("final_file_id") @db.Uuid
+  publishedAt    DateTime?       @map("published_at")
+  publishedById  String?         @map("published_by_id") @db.Uuid
+  publishNote    String?         @map("publish_note")
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
 
-  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  batch       RegistrationBatch  @relation(fields: [batchId, serviceTypeId], references: [id, serviceTypeId], onDelete: Restrict, onUpdate: NoAction)
-  serviceType ServiceType        @relation(fields: [serviceTypeId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  versions    LabReportVersion[]
-  samples     LabReportSample[]
+  tenant        Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  batch         RegistrationBatch  @relation(fields: [batchId, serviceTypeId], references: [id, serviceTypeId], onDelete: Restrict, onUpdate: NoAction)
+  serviceType   ServiceType        @relation(fields: [serviceTypeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  versions      LabReportVersion[]
+  finalFile     StoredFile?        @relation("FinalReport", fields: [finalFileId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  publishedBy   User?              @relation("PublishedReports", fields: [publishedById], references: [id], onDelete: SetNull)
+  notifications Notification[]
+  samples       LabReportSample[]
 
   reviews LabReportReview[]
 
@@ -1458,4 +1476,66 @@ model LabReportReview {
 
   @@index([reportId, decidedAt])
   @@map("lab_report_reviews")
+}
+
+// ─── Publishing and notifications (M16) ─────────────────────────────────────
+// Design pack §9/§20: publishing a ready report releases the final PDF and turns its samples
+// green. The emails it causes are written here in the same transaction (an outbox) and sent by a
+// background worker, which records every delivery (notification_deliveries).
+
+enum DeliveryStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+}
+
+model Notification {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  /// Event key (NOTIFICATION_EVENTS in @flux/shared), e.g. report.published.
+  event            String
+  reportId         String   @map("report_id") @db.Uuid
+  clientName       String   @map("client_name")
+  vesselName       String?  @map("vessel_name")
+  sampleCodes      String[] @map("sample_codes")
+  subject          String
+  bodyText         String   @map("body_text")
+  bodyHtml         String   @map("body_html")
+  attachmentFileId String?  @map("attachment_file_id") @db.Uuid
+  /// Set when nothing was sent (rule off, no recipients with an address).
+  skippedReason    String?  @map("skipped_reason")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  report     LabReport              @relation(fields: [reportId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  attachment StoredFile?            @relation(fields: [attachmentFileId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  deliveries NotificationDelivery[]
+
+  @@unique([id, tenantId])
+  @@index([reportId])
+  @@map("notifications")
+}
+
+model NotificationDelivery {
+  id             String         @id @default(uuid()) @db.Uuid
+  tenantId       String         @map("tenant_id") @db.Uuid
+  notificationId String         @map("notification_id") @db.Uuid
+  email          String
+  name           String?
+  status         DeliveryStatus @default(PENDING)
+  attempts       Int            @default(0)
+  lastError      String?        @map("last_error")
+  nextAttemptAt  DateTime       @default(now()) @map("next_attempt_at")
+  sentAt         DateTime?      @map("sent_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  notification Notification @relation(fields: [notificationId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([notificationId, email])
+  /// The worker's queue scan.
+  @@index([status, nextAttemptAt])
+  @@map("notification_deliveries")
 }

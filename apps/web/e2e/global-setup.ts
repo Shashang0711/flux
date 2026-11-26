@@ -121,6 +121,12 @@ async function seed(api: Api): Promise<void> {
     );
     clients.push(client);
   }
+  // The first client wants "Report published" emails (sent to Mailpit locally).
+  await json(
+    await api.put(`/api/v1/clients/${clients[0].id}/notification-rules/report.published`, {
+      data: { enabled: true, contactIds: [], emails: ['reports@aegeanbulk.example'] },
+    }),
+  );
   const fleet = await json(
     await api.post('/api/v1/fleets', { data: { clientId: clients[0].id, name: 'Capesize Fleet' } }),
   );

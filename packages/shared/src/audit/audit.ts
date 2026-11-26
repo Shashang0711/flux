@@ -99,6 +99,8 @@ export const AUDIT_ACTIONS = {
   'report.rejected': 'Lab report rejected',
   'report.ready_to_publish': 'Lab report ready to publish',
   'report.review_reopened': 'Lab report sent back to review',
+  'report.published': 'Report published',
+  'report.notifications_retried': 'Notification delivery retried',
   'fleet.created': 'Fleet created',
   'fleet.updated': 'Fleet updated',
   'fleet.activated': 'Fleet activated',

@@ -9,7 +9,10 @@ import {
   type LabReportListQuery,
   type LabReportSummaryDto,
   type PageQuery,
+  formatResultValue,
+  type NotificationDto,
   type addReportVersionSchema,
+  type publishReportSchema,
   type createLabReportSchema,
 } from '@flux/shared';
 import type { z } from 'zod';
@@ -20,6 +23,7 @@ import { TenantDb, type TenantTx } from '../../database/tenant-db.service';
 import { recordAudit } from '../audit/audit';
 import type { AuthUser, TenantContext } from '../auth/auth.types';
 import { FilesService, toFileDto } from '../files/files.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const SUMMARY_INCLUDE = {
   batch: { select: { id: true, code: true } },
@@ -56,6 +60,8 @@ const DETAIL_INCLUDE = {
     include: { reviewer: { select: { name: true } } },
     orderBy: { decidedAt: 'desc' },
   },
+  finalFile: { include: { uploadedBy: { select: { name: true } } } },
+  publishedBy: { select: { name: true } },
 } satisfies Prisma.LabReportInclude;
 
 type SummaryRow = Prisma.LabReportGetPayload<{ include: typeof SUMMARY_INCLUDE }>;
@@ -100,11 +106,20 @@ function toDetail(r: DetailRow): LabReportDto {
       decidedAt: rv.decidedAt.toISOString(),
     })),
     currentUploaderId: r.versions[0]?.uploadedById ?? null,
+    published:
+      r.publishedAt && r.finalFile
+        ? {
+            at: r.publishedAt.toISOString(),
+            by: r.publishedBy?.name ?? null,
+            note: r.publishNote,
+            file: toFileDto(r.finalFile),
+          }
+        : null,
   };
 }
 
 type Decision = 'REJECTED' | 'READY_TO_PUBLISH' | 'REOPENED';
-type Status = 'SUBMITTED' | 'REJECTED' | 'READY_TO_PUBLISH';
+type Status = 'SUBMITTED' | 'REJECTED' | 'READY_TO_PUBLISH' | 'PUBLISHED';
 
 /** Which status a decision needs, what it leads to, and how it is audited. */
 const DECISIONS: Record<
@@ -135,6 +150,7 @@ const STATUS_TEXT: Record<Status, string> = {
   SUBMITTED: 'awaiting review',
   REJECTED: 'rejected',
   READY_TO_PUBLISH: 'ready to publish',
+  PUBLISHED: 'published',
 };
 
 function invalid(message: string, details: FieldIssue[]): AppException {
@@ -151,6 +167,7 @@ export class LabReportsService {
   constructor(
     private readonly db: TenantDb,
     private readonly files: FilesService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   create(
@@ -252,9 +269,9 @@ export class LabReportsService {
     return this.db.run(ctx.tenantId, async (tx) => {
       const report = await tx.labReport.findUnique({ where: { id } });
       if (!report) throw AppException.notFound('Lab report', id);
-      if (report.status === 'READY_TO_PUBLISH') {
+      if (report.status === 'READY_TO_PUBLISH' || report.status === 'PUBLISHED') {
         throw AppException.badRequest(
-          'This report is ready to publish and can no longer be replaced',
+          `This report is ${STATUS_TEXT[report.status]} and can no longer be replaced`,
         );
       }
       if (report.status === 'REJECTED') {
@@ -361,6 +378,137 @@ export class LabReportsService {
         },
       });
       return this.detail(tx, id);
+    });
+  }
+
+  // ─── Publishing ───────────────────────────────────────────────────────────
+
+  /**
+   * Publish (design pack §9: green = final report uploaded): releases the final PDF for a report
+   * marked ready to publish, turns its samples green and queues the notifications, all in one
+   * transaction.
+   */
+  publish(
+    ctx: TenantContext,
+    user: AuthUser,
+    id: string,
+    input: z.output<typeof publishReportSchema>,
+  ): Promise<LabReportDto> {
+    return this.db.run(ctx.tenantId, async (tx) => {
+      const report = await tx.labReport.findUnique({
+        where: { id },
+        include: {
+          serviceType: { select: { name: true } },
+          samples: {
+            include: {
+              sample: {
+                include: {
+                  client: { select: { id: true, name: true } },
+                  vessel: { select: { id: true, name: true } },
+                  receivedKit: { select: { serialNumber: true } },
+                  results: { where: { flag: 'CRITICAL' }, include: { parameter: true } },
+                },
+              },
+            },
+            orderBy: { sample: { code: 'asc' } },
+          },
+        },
+      });
+      if (!report) throw AppException.notFound('Lab report', id);
+      if (report.status !== 'READY_TO_PUBLISH') {
+        throw AppException.conflict(
+          `This report is ${STATUS_TEXT[report.status]}; only reports marked ready to publish can be published`,
+        );
+      }
+      const file = await this.files.claim(tx, user, input.fileId, 'FINAL_REPORT');
+      const changed = await tx.labReport.updateMany({
+        where: { id, status: 'READY_TO_PUBLISH' },
+        data: {
+          status: 'PUBLISHED',
+          finalFileId: file.id,
+          publishedAt: new Date(),
+          publishedById: user.id,
+          publishNote: input.note ?? null,
+        },
+      });
+      if (changed.count !== 1)
+        throw AppException.conflict('This report was published or changed in the meantime');
+      await recordAudit(tx, {
+        tenantId: ctx.tenantId,
+        actor: user,
+        action: 'report.published',
+        entity: { type: 'lab-report', id, label: report.code },
+        relatedIds: [report.batchId, file.id, ...report.samples.map((s) => s.sampleId)],
+        changes: {
+          status: { from: 'READY_TO_PUBLISH', to: 'PUBLISHED' },
+          finalReport: { from: null, to: file.name },
+        },
+      });
+      await this.notifications.queueForPublication(
+        tx,
+        ctx.tenantId,
+        {
+          id,
+          code: report.code,
+          serviceType: report.serviceType.name,
+          finalFileId: file.id,
+          finalFileName: file.name,
+        },
+        report.samples.map(({ sample: s }) => ({
+          id: s.id,
+          code: s.code,
+          clientId: s.client.id,
+          clientName: s.client.name,
+          vesselId: s.vessel?.id ?? null,
+          vesselName: s.vessel?.name ?? null,
+          serial: s.receivedKit.serialNumber,
+          critical: s.results.map((r) => ({
+            parameter: r.parameter.name,
+            value: formatResultValue(
+              r.parameter,
+              r.valueNumber ?? r.valueBoolean ?? r.valueText ?? '',
+            ),
+            unit: r.parameter.unit,
+          })),
+        })),
+      );
+      return this.detail(tx, id);
+    });
+  }
+
+  finalDownloadLink(ctx: TenantContext, id: string): Promise<DownloadLinkDto> {
+    return this.db.run(ctx.tenantId, async (tx) => {
+      const report = await tx.labReport.findUnique({ where: { id } });
+      if (!report) throw AppException.notFound('Lab report', id);
+      if (!report.finalFileId) throw AppException.notFound('Final report');
+      return this.files.link(report.finalFileId);
+    });
+  }
+
+  notificationsOf(ctx: TenantContext, id: string): Promise<NotificationDto[]> {
+    return this.db.run(ctx.tenantId, async (tx) => {
+      if (!(await tx.labReport.findUnique({ where: { id }, select: { id: true } }))) {
+        throw AppException.notFound('Lab report', id);
+      }
+      return this.notifications.forReport(tx, id);
+    });
+  }
+
+  retryNotifications(ctx: TenantContext, user: AuthUser, id: string): Promise<NotificationDto[]> {
+    return this.db.run(ctx.tenantId, async (tx) => {
+      const report = await tx.labReport.findUnique({ where: { id } });
+      if (!report) throw AppException.notFound('Lab report', id);
+      const count = await this.notifications.retryFailed(tx, id);
+      if (count > 0) {
+        await recordAudit(tx, {
+          tenantId: ctx.tenantId,
+          actor: user,
+          action: 'report.notifications_retried',
+          entity: { type: 'lab-report', id, label: report.code },
+          changes: { deliveries: { from: null, to: count } },
+        });
+      }
+      return this.notifications.forReport(tx, id);
     });
   }
 

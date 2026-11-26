@@ -11,10 +11,11 @@ import { useMutation } from '@/hooks/use-mutation';
 import { apiFetch } from '@/lib/api';
 import { fileError, uploadFile } from '@/lib/files';
 
-const STATUS: Record<LabReportStatus, { label: string; tone: 'warn' | 'bad' | 'ok' }> = {
+const STATUS: Record<LabReportStatus, { label: string; tone: 'warn' | 'bad' | 'ok' | 'brand' }> = {
   SUBMITTED: { label: 'Awaiting review', tone: 'warn' },
   REJECTED: { label: 'Rejected', tone: 'bad' },
-  READY_TO_PUBLISH: { label: 'Ready to publish', tone: 'ok' },
+  READY_TO_PUBLISH: { label: 'Ready to publish', tone: 'brand' },
+  PUBLISHED: { label: 'Published', tone: 'ok' },
 };
 
 export function ReportStatusBadge({ status }: { status: LabReportStatus }) {

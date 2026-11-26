@@ -551,3 +551,75 @@ test('review loop: reject with a comment, lab resubmits, reviewer marks ready to
   ).toHaveCount(2);
   await reviewerContext.close();
 });
+
+test('publish a ready report: final PDF, samples green, notifications listed', async ({
+  page,
+  playwright,
+  baseURL,
+}, info) => {
+  const batch = await ballastBatch(
+    page,
+    `U${info.project.name.slice(0, 1).toUpperCase()}${Date.now().toString(36).toUpperCase()}`,
+    1,
+  );
+  const sampleId = batch.samples[0]!.id;
+  await completeResults(page, sampleId);
+  const intent = (
+    await (
+      await page.request.post('/api/v1/files', {
+        data: { purpose: 'LAB_REPORT', name: 'lab.pdf', size: PDF.length },
+      })
+    ).json()
+  ).data;
+  const file = (
+    await (
+      await page.request.put(`/api/v1${intent.uploadPath}`, {
+        data: PDF,
+        headers: { 'Content-Type': 'application/octet-stream' },
+      })
+    ).json()
+  ).data;
+  const report = (
+    await (
+      await page.request.post('/api/v1/lab-reports', {
+        data: { batchId: batch.id, sampleIds: [sampleId], fileId: file.id },
+      })
+    ).json()
+  ).data;
+
+  // A reviewer (not the uploader) marks it ready to publish.
+  const rita = await playwright.request.newContext({ baseURL });
+  expect(
+    (
+      await rita.post('/api/v1/auth/login', {
+        data: { email: 'rita@oceanic.test', password: 'demo-pass-123' },
+      })
+    ).ok(),
+  ).toBe(true);
+  expect(
+    (await rita.post(`/api/v1/lab-reports/${report.id}/ready-to-publish`, { data: {} })).ok(),
+  ).toBe(true);
+  await rita.dispose();
+
+  await page.goto(`/lab/publish?q=${report.code}`);
+  await page.getByRole('link', { name: report.code }).click();
+  const publish = page.getByRole('region', { name: 'Publish' });
+  await publish
+    .getByLabel('Final report (PDF)')
+    .setInputFiles({ name: 'final-signed.pdf', mimeType: 'application/pdf', buffer: PDF });
+  await publish.getByRole('button', { name: 'Publish' }).click();
+
+  const published = page.getByRole('region', { name: 'Published' });
+  await expect(published).toContainText('final-signed.pdf');
+  await expect(
+    page
+      .getByRole('region', { name: 'Notifications' })
+      .getByRole('table', { name: 'Notifications' }),
+  ).toContainText('Report published');
+  const download = page.waitForEvent('download');
+  await published.getByRole('button', { name: 'Download final report' }).click();
+  expect((await download).suggestedFilename()).toBe('final-signed.pdf');
+
+  await page.goto(`/lab/samples/${sampleId}`);
+  await expect(page.locator('main').getByText('Report published')).toBeVisible();
+});
