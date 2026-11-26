@@ -127,6 +127,7 @@
 }
 
 .dotOk,
+.dotWarn,
 .dotBad {
   width: 8px;
   height: 8px;
@@ -136,6 +137,10 @@
 
 .dotBad {
   background: var(--bad);
+}
+
+.dotWarn {
+  background: var(--warn);
 }
 
 @media (max-width: 639px) {

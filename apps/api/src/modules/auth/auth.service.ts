@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import {
   ErrorCode,
   type ChangePasswordRequest,
@@ -16,8 +16,16 @@ import { SessionService } from './session.service';
 
 const INVALID_CREDENTIALS = 'Invalid email or password';
 
+export interface LoginMeta {
+  ipAddress?: string;
+  userAgent?: string;
+  requestId?: string;
+}
+
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly sessions: SessionService,
@@ -25,7 +33,7 @@ export class AuthService {
 
   async login(
     credentials: LoginRequest,
-    meta: { ipAddress?: string; userAgent?: string },
+    meta: LoginMeta,
   ): Promise<{ user: UserDto; token: string; expiresAt: Date }> {
     // System lookup (bypasses RLS): the tenant is not known until the user is found.
     const user = await this.prisma.user.findUnique({
@@ -37,12 +45,18 @@ export class AuthService {
     // so the response does not reveal which accounts exist.
     if (!user) {
       await verifyAgainstDummy(credentials.password);
+      // Logged without the address (personal data, and often a typo of a real one).
+      this.logger.warn(`Sign-in failed: unknown account (request ${meta.requestId ?? '-'})`);
       throw this.invalidCredentials();
     }
     const passwordOk = await verifyPassword(user.passwordHash, credentials.password);
-    if (!passwordOk || user.status !== 'ACTIVE') throw this.invalidCredentials();
+    if (!passwordOk || user.status !== 'ACTIVE') {
+      await this.auditFailure(user, passwordOk ? 'Account disabled' : 'Wrong password', meta);
+      throw this.invalidCredentials();
+    }
     // Only revealed after a correct password, so it does not leak which accounts exist.
     if (user.tenant && user.tenant.status !== 'ACTIVE') {
+      await this.auditFailure(user, 'Organisation suspended', meta);
       throw new AppException(
         HttpStatus.FORBIDDEN,
         ErrorCode.TENANT_SUSPENDED,
@@ -51,6 +65,7 @@ export class AuthService {
     }
 
     if (user.client && user.client.status !== 'ACTIVE') {
+      await this.auditFailure(user, 'Client inactive', meta);
       throw AppException.forbidden('Portal access for your company is not active');
     }
 
@@ -59,7 +74,41 @@ export class AuthService {
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
+    await recordAudit(this.prisma, {
+      tenantId: user.tenantId,
+      actor: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        tenantId: user.tenantId,
+        isPlatformAdmin: user.isPlatformAdmin,
+        clientId: user.clientId,
+        modules: [],
+        access: { portals: [], modules: [], permissions: [], defaultPortal: null },
+        request: { id: meta.requestId, ip: meta.ipAddress },
+      },
+      action: 'auth.signed_in',
+      entity: { type: 'user', id: user.id, label: user.name },
+      relatedIds: user.clientId ? [user.clientId] : [],
+    });
     return { user: toUserDto(updated), token, expiresAt };
+  }
+
+  /** A failed sign-in to a known account, in its organisation's audit log (never the password). */
+  private auditFailure(
+    user: { id: string; name: string; tenantId: string | null; clientId: string | null },
+    reason: string,
+    meta: LoginMeta,
+  ): Promise<void> {
+    return recordAudit(this.prisma, {
+      tenantId: user.tenantId,
+      actor: null,
+      action: 'auth.sign_in_failed',
+      entity: { type: 'user', id: user.id, label: user.name },
+      relatedIds: user.clientId ? [user.clientId] : [],
+      changes: { reason: { from: null, to: reason } },
+      request: { id: meta.requestId, ip: meta.ipAddress },
+    });
   }
 
   /** Session details; access was already computed by AuthGuard for this request. */

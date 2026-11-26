@@ -58,6 +58,7 @@ export class AuthController {
     const { user, token, expiresAt } = await this.auth.login(body, {
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
+      requestId: req.id === undefined ? undefined : String(req.id),
     });
     setSessionCookie(res, token, expiresAt, this.secureCookie);
     return user;

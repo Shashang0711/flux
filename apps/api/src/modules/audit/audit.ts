@@ -21,6 +21,8 @@ export interface AuditEntry {
   /** Other records affected, so they show this entry in their history too. */
   relatedIds?: string[];
   changes?: AuditChanges | null;
+  /** Request details when there is no signed-in actor (e.g. a failed sign-in). */
+  request?: { id?: string; ip?: string };
 }
 
 /**
@@ -42,8 +44,8 @@ export async function recordAudit(tx: Tx, entry: AuditEntry): Promise<void> {
       entityLabel: entry.entity.label ?? null,
       relatedIds: [...new Set(entry.relatedIds ?? [])].filter((id) => id !== entry.entity.id),
       changes: (entry.changes ?? undefined) as Prisma.InputJsonValue | undefined,
-      requestId: actor?.request?.id ?? null,
-      ipAddress: actor?.request?.ip ?? null,
+      requestId: (actor?.request ?? entry.request)?.id ?? null,
+      ipAddress: (actor?.request ?? entry.request)?.ip ?? null,
     },
   });
 }

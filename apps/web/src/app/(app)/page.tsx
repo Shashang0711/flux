@@ -198,10 +198,17 @@ export default async function HomePage() {
       </div>
 
       <p className={styles.status} role="status">
-        <span className={health ? styles.dotOk : styles.dotBad} aria-hidden="true" />
-        {health
-          ? `All systems operational · API v${health.version}`
-          : 'The FLUX API is not reachable right now.'}
+        <span
+          className={
+            !health ? styles.dotBad : health.status === 'ok' ? styles.dotOk : styles.dotWarn
+          }
+          aria-hidden="true"
+        />
+        {!health
+          ? 'The FLUX API is not reachable right now.'
+          : health.status === 'ok'
+            ? `All systems operational · API v${health.version}`
+            : `Email notifications are delayed · API v${health.version}`}
       </p>
     </>
   );

@@ -18,6 +18,7 @@ const STATUS_TO_CODE: Partial<Record<number, ErrorCode>> = {
   [HttpStatus.NOT_FOUND]: ErrorCode.NOT_FOUND,
   [HttpStatus.CONFLICT]: ErrorCode.CONFLICT,
   [HttpStatus.TOO_MANY_REQUESTS]: ErrorCode.TOO_MANY_REQUESTS,
+  [HttpStatus.PAYLOAD_TOO_LARGE]: ErrorCode.PAYLOAD_TOO_LARGE,
   [HttpStatus.SERVICE_UNAVAILABLE]: ErrorCode.SERVICE_UNAVAILABLE,
 };
 
@@ -85,6 +86,29 @@ export class AllExceptionsFilter implements ExceptionFilter {
             STATUS_TO_CODE[status] ??
             (status >= 500 ? ErrorCode.INTERNAL_ERROR : ErrorCode.BAD_REQUEST),
           message: status >= 500 ? 'An unexpected error occurred' : exception.message,
+        },
+      };
+    }
+
+    // Body parser errors (too large, malformed JSON) carry a 4xx status but are not Nest ones.
+    const parser = exception as { type?: unknown; status?: unknown };
+    if (
+      exception instanceof Error &&
+      typeof parser.type === 'string' &&
+      parser.type.startsWith('entity.') &&
+      typeof parser.status === 'number' &&
+      parser.status >= 400 &&
+      parser.status < 500
+    ) {
+      const status = parser.status;
+      return {
+        status,
+        body: {
+          code: STATUS_TO_CODE[status] ?? ErrorCode.BAD_REQUEST,
+          message:
+            status === HttpStatus.PAYLOAD_TOO_LARGE
+              ? 'The request is too large'
+              : 'The request body could not be read',
         },
       };
     }

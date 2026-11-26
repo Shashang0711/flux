@@ -1,8 +1,10 @@
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import {
   CreateBucketCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
   PutObjectCommand,
@@ -14,8 +16,10 @@ import type { Env } from '../../config/env';
 export interface FileStorage {
   put(key: string, body: Buffer, contentType: string): Promise<void>;
   get(key: string): Promise<Readable>;
-  /** Best-effort removal (used when a stored upload is rejected). */
+  /** Removes an object (rejected or abandoned uploads). Missing objects are fine. */
   remove(key: string): Promise<void>;
+  /** Throws if the storage cannot be reached (readiness check). */
+  check(): Promise<void>;
 }
 
 export const FILE_STORAGE = Symbol('FILE_STORAGE');
@@ -52,6 +56,11 @@ export class LocalFileStorage implements FileStorage {
     checkKey(key);
     await rm(join(this.root, key), { force: true });
   }
+
+  async check(): Promise<void> {
+    await mkdir(this.root, { recursive: true });
+    await access(this.root, constants.W_OK);
+  }
 }
 
 /** Any S3-compatible service (AWS S3, MinIO, …). The bucket must not be public. */
@@ -74,8 +83,13 @@ export class S3FileStorage implements FileStorage {
     return res.Body as Readable;
   }
 
-  async remove(): Promise<void> {
-    // Objects are kept; an unattached upload is just never served. (Lifecycle rules can expire them.)
+  async remove(key: string): Promise<void> {
+    checkKey(key);
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+  }
+
+  async check(): Promise<void> {
+    await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
   }
 
   /** Creates the bucket when it does not exist yet (local development). */

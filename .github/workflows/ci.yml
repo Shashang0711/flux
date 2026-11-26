@@ -100,3 +100,22 @@ jobs:
             apps/web/e2e/.results
             api.log
             web.log
+
+  images:
+    # The production images build, run as non-root, and ship no build tooling: the Prisma CLI
+    # (with its own dependencies) lives only in the one-off tools image.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build api, web and tools images
+        run: |
+          docker build --target api -t flux-api .
+          docker build --target web -t flux-web .
+          docker build --target tools -t flux-tools .
+      - name: Check the runtime images
+        run: |
+          for image in flux-api flux-web; do
+            test "$(docker run --rm $image whoami)" = node
+            docker run --rm $image sh -c '! test -e /app/node_modules/prisma && ! test -e /app/node_modules/tsx'
+          done
+          docker run --rm flux-tools pg_dump --version | grep -q 'PostgreSQL) 16\.'
