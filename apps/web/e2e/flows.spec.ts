@@ -463,3 +463,91 @@ test('attach a photo to a sample, download it and remove it', async ({ page }, i
   await attachments.getByRole('button', { name: 'Remove' }).click();
   await expect(page.getByText('No attachments.')).toBeVisible();
 });
+
+test('review loop: reject with a comment, lab resubmits, reviewer marks ready to publish', async ({
+  page,
+  browser,
+}, info) => {
+  const batch = await ballastBatch(
+    page,
+    `V${info.project.name.slice(0, 1).toUpperCase()}${Date.now().toString(36).toUpperCase()}`,
+    1,
+  );
+  const sampleId = batch.samples[0]!.id;
+  await completeResults(page, sampleId);
+  // The lab (owner) uploads the report through the API.
+  const intent = (
+    await (
+      await page.request.post('/api/v1/files', {
+        data: { purpose: 'LAB_REPORT', name: 'v1.pdf', size: PDF.length },
+      })
+    ).json()
+  ).data;
+  const file = (
+    await (
+      await page.request.put(`/api/v1${intent.uploadPath}`, {
+        data: PDF,
+        headers: { 'Content-Type': 'application/octet-stream' },
+      })
+    ).json()
+  ).data;
+  const report = (
+    await (
+      await page.request.post('/api/v1/lab-reports', {
+        data: { batchId: batch.id, sampleIds: [sampleId], fileId: file.id },
+      })
+    ).json()
+  ).data;
+
+  // The owner uploaded it, so they cannot review it.
+  await page.goto(`/lab/reports/${report.id}`);
+  await expect(
+    page.getByText('You uploaded this version, so another reviewer must review it.'),
+  ).toBeVisible();
+
+  // A reviewer rejects it.
+  const reviewerContext = await browser.newContext({ viewport: page.viewportSize() ?? undefined });
+  const reviewer = await reviewerContext.newPage();
+  await reviewer.goto('/login');
+  await reviewer.getByLabel('Email').fill('rita@oceanic.test');
+  await reviewer.getByLabel('Password').fill('demo-pass-123');
+  await reviewer.getByRole('button', { name: 'Sign in' }).click();
+  await expect(reviewer).toHaveURL(/\/$/);
+  await reviewer.goto(`/lab/review?q=${report.code}`);
+  await reviewer.getByRole('link', { name: report.code }).click();
+  await reviewer.getByRole('button', { name: 'Reject' }).click();
+  const reject = reviewer.getByRole('dialog', { name: `Reject ${report.code}` });
+  await reject
+    .getByLabel('What should the lab correct?')
+    .fill('Add the sampling time to the report');
+  await reject.getByRole('button', { name: 'Reject and return to the lab' }).click();
+  await expect(reviewer.locator('main').getByText('Rejected').first()).toBeVisible();
+
+  // The lab sees why, and the sample is back with the lab.
+  await page.goto(`/lab/samples/${sampleId}`);
+  await expect(page.locator('main').getByText('Report rejected')).toBeVisible();
+  await page.goto(`/lab/reports/${report.id}`);
+  // The rejection banner shows the reviewer's comment.
+  await expect(page.getByRole('status').filter({ hasText: 'Rejected by' })).toContainText(
+    'Add the sampling time to the report',
+  );
+  await page.getByRole('button', { name: 'Replace file' }).click();
+  const replace = page.getByRole('dialog', { name: `Replace ${report.code}` });
+  await replace
+    .getByLabel('New report (PDF)')
+    .setInputFiles({ name: 'v2.pdf', mimeType: 'application/pdf', buffer: PDF });
+  await replace.getByLabel('What changed').fill('Sampling time added');
+  await replace.getByRole('button', { name: 'Upload version 2' }).click();
+  await expect(replace.getByText('New version uploaded.')).toBeVisible();
+
+  // The reviewer approves the corrected version.
+  await reviewer.reload();
+  await reviewer.getByRole('button', { name: 'Mark ready to publish' }).click();
+  const ready = reviewer.getByRole('dialog', { name: `Mark ${report.code} ready to publish` });
+  await ready.getByRole('button', { name: 'Mark ready to publish' }).click();
+  await expect(reviewer.locator('main').getByText('Ready to publish').first()).toBeVisible();
+  await expect(
+    reviewer.getByRole('table', { name: 'Review history' }).locator('tbody tr'),
+  ).toHaveCount(2);
+  await reviewerContext.close();
+});

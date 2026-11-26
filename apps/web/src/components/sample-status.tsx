@@ -18,12 +18,21 @@ const TONE: Record<SampleColour, string> = {
 export function SampleStatusBadge({
   status,
   colour,
+  reportStatus,
 }: {
   status: SampleStatus;
   colour: SampleColour;
+  /** The covering lab report's status, if any. */
+  reportStatus?: string | null;
 }) {
-  // Yellow and green are report milestones on top of the testing status.
-  const label = colour === 'yellow' ? 'Lab report uploaded' : LABEL[status];
+  // Yellow and green are report milestones on top of the testing status; a rejected report
+  // sends the sample back to the lab (red).
+  const label =
+    colour === 'yellow'
+      ? 'Lab report uploaded'
+      : reportStatus === 'REJECTED'
+        ? 'Report rejected'
+        : LABEL[status];
   return (
     <span className={`badge ${TONE[colour]}`} title={`${colour} — ${label}`}>
       <span aria-hidden="true">●</span> {label}

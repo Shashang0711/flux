@@ -66,6 +66,27 @@ async function seed(api: Api): Promise<void> {
       },
     }),
   );
+  // A second person to review lab reports (the uploader cannot review their own: four eyes).
+  const reviewerRole = await json(
+    await api.post('/api/v1/roles', {
+      data: {
+        name: 'Report reviewer',
+        defaultPortal: 'ADMIN',
+        modules: ['reports'],
+        permissions: ['report.review'],
+      },
+    }),
+  );
+  await json(
+    await api.post('/api/v1/users', {
+      data: {
+        name: 'Rita Reviewer',
+        email: 'rita@oceanic.test',
+        password: 'demo-pass-123',
+        roleIds: [reviewerRole.id],
+      },
+    }),
+  );
   await json(
     await api.post('/api/v1/custom-fields', {
       data: {

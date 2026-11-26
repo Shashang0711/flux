@@ -144,6 +144,7 @@ renders the shell: a sidebar built from `lib/navigation.ts`, showing only what t
 | `/lab/testing`                   | `sample.view`                           | Under testing: Batch view and Sample view of open work                                                |
 | `/lab/batches/:id/results`       | `sample.view` (`sample.test` to edit)   | Results grid, CSV template download and upload with preview                                           |
 | `/lab/reports/...`               | `report.view`                           | Lab reports: list, versions, download, replace file; upload from the batch page                       |
+| `/lab/review`                    | `report.review`                         | Report review: reports awaiting a decision                                                            |
 | `/admin/audit`                   | `audit.view`                            | Audit log with filters                                                                                |
 | `/platform/reference-data`       | Platform admins                         | Manage FLUX default reference data                                                                    |
 | `/platform/audit`                | Platform admins                         | Platform-level audit log                                                                              |
@@ -497,6 +498,26 @@ attachments: `sample.view` / `sample.test`).
 - **Attachments**: supporting files on a sample (printouts, photos, instrument exports) until it
   is in a report.
 
+## Admin review
+
+Design pack §8/§16 (`report.review`). Reviewers work through **Report review** (reports awaiting
+review) and decide on each report:
+
+| Decision                  | From → to                          | Rules                                                                                                                                       |
+| ------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Reject**                | Awaiting review → Rejected         | Comment required (kept). Back to the lab: its samples show red ("Report rejected") and their results and attachments unlock for correction. |
+| **Mark ready to publish** | Awaiting review → Ready to publish | Optional comment. Only these reports appear on the Publish page (M16); the file can no longer be replaced.                                  |
+| **Send back to review**   | Ready to publish → Awaiting review | Reason required; possible until published.                                                                                                  |
+
+- **Four eyes:** whoever uploaded the current version cannot reject or approve it, even with both
+  permissions.
+- **Correction loop:** after a rejection the lab may reopen and fix results, then upload a
+  corrected report (_Replace file_ → new version); that needs every covered sample's results to be
+  complete again, and returns the report to "awaiting review" (samples yellow again).
+- Decisions change the status only from the expected one, so two reviewers cannot both decide.
+  Every decision is stored in `lab_report_reviews` (append-only, with the version it concerned)
+  and audited on the report and its samples.
+
 ## Custom fields
 
 Tenants add their own fields to records (Admin → Custom fields, `custom-field.manage`). Record
@@ -641,6 +662,9 @@ When adding a feature that changes data:
 | `GET /api/v1/files/:id/download?expires=&token=`                                                          | Signed link                             | Download (links come from the features' `download-link` endpoints)                                          |
 | `GET/POST /api/v1/lab-reports`, `GET /api/v1/lab-reports/:id`                                             | `report.view` / `report.upload`         | Lab reports (`?status=&batchId=&q=`)                                                                        |
 | `POST /api/v1/lab-reports/:id/versions`                                                                   | `report.upload`                         | Replace the report file (new version)                                                                       |
+| `POST /api/v1/lab-reports/:id/reject`                                                                     | `report.review`                         | Reject with `{comment}` (back to the lab)                                                                   |
+| `POST /api/v1/lab-reports/:id/ready-to-publish`                                                           | `report.review`                         | Mark ready to publish (`{comment?}`)                                                                        |
+| `POST /api/v1/lab-reports/:id/reopen-review`                                                              | `report.review`                         | Send a ready report back to review (`{reason}`)                                                             |
 | `GET /api/v1/lab-reports/:id/download-link`, `…/versions/:n/download-link`                                | `report.view`                           | Short-lived download links                                                                                  |
 | `GET/POST /api/v1/samples/:id/attachments`, `DELETE …/:attachmentId`, `GET …/:attachmentId/download-link` | `sample.view` / `sample.test`           | Sample attachments                                                                                          |
 | `GET /api/v1/clients/:id/vessels`                                                                         | `vessel.view`                           | Vessels linked to a client                                                                                  |

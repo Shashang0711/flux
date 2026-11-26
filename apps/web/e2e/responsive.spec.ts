@@ -45,6 +45,7 @@ test.describe('tenant admin pages fit every screen', () => {
     '/lab/testing?view=samples',
     '/lab/batches',
     '/lab/reports',
+    '/lab/review',
     '/lab/batches/new',
     '/lab/samples',
     '/account',

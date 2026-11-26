@@ -98,7 +98,13 @@ export default async function BatchPage({ params }: { params: Promise<{ id: stri
             { header: 'Details', cell: (s) => fieldSummary(sampleFields, s.values) || '—' },
             {
               header: 'Status',
-              cell: (s) => <SampleStatusBadge status={s.status} colour={s.colour} />,
+              cell: (s) => (
+                <SampleStatusBadge
+                  status={s.status}
+                  colour={s.colour}
+                  reportStatus={s.labReport?.status}
+                />
+              ),
             },
             { header: 'Flag', cell: (s) => <FlagBadge flag={s.worstFlag} /> },
           ]}

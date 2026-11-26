@@ -25,6 +25,11 @@ const SUMMARY_INCLUDE = {
   batch: { select: { id: true, code: true } },
   serviceType: { select: { id: true, code: true, name: true } },
   _count: { select: { samples: true } },
+  versions: {
+    orderBy: { version: 'desc' },
+    take: 1,
+    include: { file: { select: { uploadedBy: { select: { name: true } } } } },
+  },
 } satisfies Prisma.LabReportInclude;
 
 const DETAIL_INCLUDE = {
@@ -35,6 +40,7 @@ const DETAIL_INCLUDE = {
         select: {
           id: true,
           code: true,
+          status: true,
           vessel: { select: { name: true } },
           client: { select: { name: true } },
         },
@@ -46,6 +52,10 @@ const DETAIL_INCLUDE = {
     include: { file: { include: { uploadedBy: { select: { name: true } } } } },
     orderBy: { version: 'desc' },
   },
+  reviews: {
+    include: { reviewer: { select: { name: true } } },
+    orderBy: { decidedAt: 'desc' },
+  },
 } satisfies Prisma.LabReportInclude;
 
 type SummaryRow = Prisma.LabReportGetPayload<{ include: typeof SUMMARY_INCLUDE }>;
@@ -56,6 +66,7 @@ function toSummary(r: SummaryRow): LabReportSummaryDto {
     id: r.id,
     code: r.code,
     status: r.status,
+    uploadedBy: r.versions[0]?.file.uploadedBy?.name ?? null,
     batch: r.batch,
     serviceType: r.serviceType,
     sampleCount: r._count.samples,
@@ -72,6 +83,7 @@ function toDetail(r: DetailRow): LabReportDto {
       code: s.sample.code,
       vessel: s.sample.vessel?.name ?? null,
       client: s.sample.client.name,
+      status: s.sample.status,
     })),
     versions: r.versions.map((v) => ({
       version: v.version,
@@ -80,8 +92,50 @@ function toDetail(r: DetailRow): LabReportDto {
       uploadedAt: v.uploadedAt.toISOString(),
       uploadedBy: v.file.uploadedBy?.name ?? null,
     })),
+    reviews: r.reviews.map((rv) => ({
+      decision: rv.decision,
+      version: rv.version,
+      comment: rv.comment,
+      reviewer: rv.reviewer?.name ?? null,
+      decidedAt: rv.decidedAt.toISOString(),
+    })),
+    currentUploaderId: r.versions[0]?.uploadedById ?? null,
   };
 }
+
+type Decision = 'REJECTED' | 'READY_TO_PUBLISH' | 'REOPENED';
+type Status = 'SUBMITTED' | 'REJECTED' | 'READY_TO_PUBLISH';
+
+/** Which status a decision needs, what it leads to, and how it is audited. */
+const DECISIONS: Record<
+  Decision,
+  {
+    from: Status;
+    to: Status;
+    action: 'report.rejected' | 'report.ready_to_publish' | 'report.review_reopened';
+    fourEyes: boolean;
+  }
+> = {
+  REJECTED: { from: 'SUBMITTED', to: 'REJECTED', action: 'report.rejected', fourEyes: true },
+  READY_TO_PUBLISH: {
+    from: 'SUBMITTED',
+    to: 'READY_TO_PUBLISH',
+    action: 'report.ready_to_publish',
+    fourEyes: true,
+  },
+  REOPENED: {
+    from: 'READY_TO_PUBLISH',
+    to: 'SUBMITTED',
+    action: 'report.review_reopened',
+    fourEyes: false,
+  },
+};
+
+const STATUS_TEXT: Record<Status, string> = {
+  SUBMITTED: 'awaiting review',
+  REJECTED: 'rejected',
+  READY_TO_PUBLISH: 'ready to publish',
+};
 
 function invalid(message: string, details: FieldIssue[]): AppException {
   return new AppException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_ERROR, message, details);
@@ -203,6 +257,18 @@ export class LabReportsService {
           'This report is ready to publish and can no longer be replaced',
         );
       }
+      if (report.status === 'REJECTED') {
+        // A correction may have reopened results: they must be complete again.
+        const open = await tx.labReportSample.findMany({
+          where: { reportId: id, sample: { status: { not: 'RESULTS_ENTERED' } } },
+          include: { sample: { select: { code: true } } },
+        });
+        if (open.length > 0) {
+          throw AppException.badRequest(
+            `Complete the results of ${open.map((o) => o.sample.code).join(', ')} before uploading the corrected report`,
+          );
+        }
+      }
       await this.files.claim(tx, user, input.fileId, 'LAB_REPORT');
       const version = report.currentVersion + 1;
       await tx.labReportVersion.create({
@@ -230,6 +296,68 @@ export class LabReportsService {
           ...(report.status !== 'SUBMITTED'
             ? { status: { from: report.status, to: 'SUBMITTED' } }
             : {}),
+        },
+      });
+      return this.detail(tx, id);
+    });
+  }
+
+  /**
+   * Admin review (design pack §8): reject (comment required; back to the lab), mark ready to
+   * publish, or send a ready report back to review. Four eyes: whoever uploaded the current
+   * version cannot reject or approve it. The status changes only from the expected one, so two
+   * reviewers cannot both decide.
+   */
+  review(
+    ctx: TenantContext,
+    user: AuthUser,
+    id: string,
+    decision: Decision,
+    comment: string | null,
+  ): Promise<LabReportDto> {
+    return this.db.run(ctx.tenantId, async (tx) => {
+      const rule = DECISIONS[decision];
+      const report = await tx.labReport.findUnique({
+        where: { id },
+        include: {
+          versions: { orderBy: { version: 'desc' }, take: 1 },
+          samples: { select: { sampleId: true } },
+        },
+      });
+      if (!report) throw AppException.notFound('Lab report', id);
+      if (report.status !== rule.from) {
+        throw AppException.conflict(`This report is ${STATUS_TEXT[report.status]}`);
+      }
+      if (rule.fourEyes && report.versions[0]?.uploadedById === user.id) {
+        throw AppException.forbidden('You uploaded this version; another reviewer must review it');
+      }
+      const changed = await tx.labReport.updateMany({
+        where: { id, status: rule.from },
+        data: { status: rule.to },
+      });
+      if (changed.count !== 1) {
+        throw AppException.conflict('Another reviewer decided on this report in the meantime');
+      }
+      await tx.labReportReview.create({
+        data: {
+          tenantId: ctx.tenantId,
+          reportId: id,
+          version: report.currentVersion,
+          decision,
+          comment,
+          reviewerId: user.id,
+        },
+      });
+      await recordAudit(tx, {
+        tenantId: ctx.tenantId,
+        actor: user,
+        action: rule.action,
+        entity: { type: 'lab-report', id, label: report.code },
+        relatedIds: [report.batchId, ...report.samples.map((s) => s.sampleId)],
+        changes: {
+          status: { from: report.status, to: rule.to },
+          version: { from: null, to: report.currentVersion },
+          ...(comment ? { comment: { from: null, to: comment } } : {}),
         },
       });
       return this.detail(tx, id);

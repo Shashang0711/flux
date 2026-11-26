@@ -156,16 +156,18 @@ export function ReplaceFileForm({ report }: { report: LabReportDto }) {
 export function ReportTable({
   reports,
   showBatch = true,
+  empty = 'No lab reports yet.',
 }: {
   reports: LabReportSummaryDto[];
   showBatch?: boolean;
+  empty?: string;
 }) {
   return (
     <DataTable
       label="Lab reports"
       rows={reports}
       rowKey={(r) => r.id}
-      empty="No lab reports yet."
+      empty={empty}
       columns={[
         {
           header: 'Report',
@@ -175,7 +177,10 @@ export function ReportTable({
               <Link href={`/lab/reports/${r.id}`}>
                 <code>{r.code}</code>
               </Link>
-              <span className="cell-sub">Version {r.currentVersion}</span>
+              <span className="cell-sub">
+                Version {r.currentVersion}
+                {r.uploadedBy ? ` · ${r.uploadedBy}` : ''}
+              </span>
             </>
           ),
         },
