@@ -5,6 +5,7 @@ import type {
   ClientNotificationRuleDto,
   CustomFieldDefinitionDto,
   FleetDto,
+  PortalUserDto,
   VesselRelationshipDto,
 } from '@flux/shared';
 import { AuditTable } from '@/components/audit-table';
@@ -16,6 +17,7 @@ import { readParams } from '@/components/pagination';
 import { loadOrNotFound, sessionWithPermission } from '@/lib/server-api';
 import { ClientFleets, ClientVessels } from './client-fleets';
 import { ClientNotifications } from './client-notifications';
+import { ClientPortalUsers } from './client-portal-users';
 import { Addresses, BillingParties, Contacts, Overview } from './client-tabs';
 
 export const metadata: Metadata = { title: 'Client · FLUX' };
@@ -44,6 +46,9 @@ export default async function ClientPage({
           { key: 'vessels', name: 'Vessels' },
           { key: 'fleets', name: 'Fleets' },
         ]
+      : []),
+    ...(session.modules.includes('client-portal') && permissions.includes('user.view')
+      ? [{ key: 'portal-users', name: 'Portal users' }]
       : []),
     ...(permissions.includes('audit.view') ? [{ key: 'audit', name: 'Audit' }] : []),
   ];
@@ -107,6 +112,13 @@ export default async function ClientPage({
           client={client}
           fleets={(await loadOrNotFound<FleetDto[]>(`/clients/${id}/fleets`)).data}
           canManage={permissions.includes('fleet.manage')}
+        />
+      )}
+      {tab === 'portal-users' && (
+        <ClientPortalUsers
+          client={client}
+          users={(await loadOrNotFound<PortalUserDto[]>(`/clients/${id}/portal-users`)).data}
+          canManage={permissions.includes('user.manage')}
         />
       )}
       {tab === 'audit' && (

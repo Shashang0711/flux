@@ -9,6 +9,8 @@ export interface AuthUser {
   /** Null for platform administrators. */
   tenantId: string | null;
   isPlatformAdmin: boolean;
+  /** Client portal users only: their client. The API refuses them every staff route. */
+  clientId: string | null;
   /** Modules the user's tenant can use (core + licensed). Empty for platform admins. */
   modules: ModuleKey[];
   /** What the user may do, from their active roles. Empty for platform admins. */

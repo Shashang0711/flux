@@ -21,6 +21,8 @@ export interface UserDto {
   isPlatformAdmin: boolean;
   /** Roles assigned to the user (tenant users only). */
   roles: { id: string; name: string }[];
+  /** Client portal users only: the client whose records they see. */
+  clientId: string | null;
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -96,4 +98,6 @@ export interface SessionInfo {
   modules: string[];
   /** What this user may do, from their roles. Empty for platform admins. */
   access: SessionAccess;
+  /** Client portal users only: their client. */
+  client: { id: string; code: string; name: string } | null;
 }

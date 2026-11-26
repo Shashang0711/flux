@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Prisma } from '@prisma/client';
-import { effectiveModules } from '@flux/shared';
+import { clientUserAccess, effectiveModules } from '@flux/shared';
 import { NO_ACCESS, ROLE_ACCESS_SELECT, buildSessionAccess } from './access';
 import type { Env } from '../../config/env';
 import { PrismaService } from '../../database/prisma.service';
@@ -69,6 +69,8 @@ export class SessionService {
             status: true,
             tenantId: true,
             isPlatformAdmin: true,
+            clientId: true,
+            client: { select: { status: true } },
             tenant: { select: { status: true, modules: { select: { moduleKey: true } } } },
             userRoles: {
               orderBy: { assignedAt: 'asc' },
@@ -87,7 +89,9 @@ export class SessionService {
       session.expiresAt.getTime() <= now ||
       session.lastSeenAt.getTime() + this.idleMs <= now;
     const tenantSuspended = user.tenant !== null && user.tenant.status !== 'ACTIVE';
-    if (expired || user.status !== 'ACTIVE' || tenantSuspended) return null;
+    // A client portal user loses access while their client is inactive.
+    const clientInactive = user.client !== null && user.client.status !== 'ACTIVE';
+    if (expired || user.status !== 'ACTIVE' || tenantSuspended || clientInactive) return null;
 
     if (now - session.lastSeenAt.getTime() > TOUCH_INTERVAL_MS) {
       await this.prisma.session.update({
@@ -104,13 +108,17 @@ export class SessionService {
         name: user.name,
         tenantId: user.tenantId,
         isPlatformAdmin: user.isPlatformAdmin,
+        clientId: user.clientId,
         modules: licensed ? effectiveModules(licensed) : [],
-        access: licensed
-          ? buildSessionAccess(
-              licensed,
-              user.userRoles.map((ur) => ur.role),
-            )
-          : NO_ACCESS,
+        // Client users have fixed access (never roles); staff get theirs from their roles.
+        access: !licensed
+          ? NO_ACCESS
+          : user.clientId
+            ? clientUserAccess(effectiveModules(licensed))
+            : buildSessionAccess(
+                licensed,
+                user.userRoles.map((ur) => ur.role),
+              ),
       },
     };
   }

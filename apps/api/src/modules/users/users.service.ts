@@ -31,6 +31,9 @@ const EMAIL_TAKEN = () =>
 
 const AUDITED_FIELDS = ['name', 'email', 'status'] as const;
 
+/** Staff only: client portal users are managed on their client's page (PortalUsersService). */
+const STAFF = { clientId: null } satisfies Prisma.UserWhereInput;
+
 /**
  * Users of the caller's tenant. Every query runs through TenantDb, so row-level security
  * limits it to that tenant regardless of the `where` clauses below. Every change is audited
@@ -45,6 +48,7 @@ export class UsersService {
 
   list(ctx: TenantContext, query: PageQuery & UserListFilter): Promise<Paginated<UserDto>> {
     const where: Prisma.UserWhereInput = {
+      ...STAFF,
       ...(query.status ? { status: query.status } : {}),
       ...(query.q
         ? {
@@ -71,7 +75,7 @@ export class UsersService {
 
   async get(ctx: TenantContext, id: string): Promise<UserDto> {
     const user = await this.db.run(ctx.tenantId, (tx) =>
-      tx.user.findUnique({ where: { id }, include: USER_ROLES_INCLUDE }),
+      tx.user.findFirst({ where: { id, ...STAFF }, include: USER_ROLES_INCLUDE }),
     );
     if (!user) throw AppException.notFound('User', id);
     return toUserDto(user);
@@ -133,7 +137,7 @@ export class UsersService {
     }
     try {
       const user = await this.db.run(ctx.tenantId, async (tx) => {
-        const before = await tx.user.findUnique({ where: { id } });
+        const before = await tx.user.findFirst({ where: { id, ...STAFF } });
         if (!before) throw AppException.notFound('User', id);
         if (input.status === 'DISABLED' && before.status !== 'DISABLED') {
           await assertAdministratorRemains(tx, { removingUserIds: [id] });
@@ -182,7 +186,10 @@ export class UsersService {
     actor: AuthUser,
   ): Promise<UserDto> {
     const user = await this.db.run(ctx.tenantId, async (tx) => {
-      const existing = await tx.user.findUnique({ where: { id }, include: USER_ROLES_INCLUDE });
+      const existing = await tx.user.findFirst({
+        where: { id, ...STAFF },
+        include: USER_ROLES_INCLUDE,
+      });
       if (!existing) throw AppException.notFound('User', id);
 
       // Validate the request as sent, so error paths point at the caller's roleIds.
@@ -236,7 +243,7 @@ export class UsersService {
     }
     const passwordHash = await hashPassword(password);
     await this.db.run(ctx.tenantId, async (tx) => {
-      const user = await tx.user.findUnique({ where: { id }, select: { name: true } });
+      const user = await tx.user.findFirst({ where: { id, ...STAFF }, select: { name: true } });
       if (!user) throw AppException.notFound('User', id);
       await tx.user.update({ where: { id }, data: { passwordHash } });
       await this.sessions.revokeAllForUser(id, { tx });

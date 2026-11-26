@@ -11,6 +11,8 @@ export interface NavItem {
   permission?: PermissionKey;
   /** Shown only to tenant users holding all of these permissions. */
   permissions?: PermissionKey[];
+  /** Highlighted on this exact path only (section home pages). */
+  exact?: boolean;
 }
 
 export interface NavGroup {
@@ -114,6 +116,34 @@ export const NAVIGATION: NavGroup[] = [
   },
 ];
 
+/** The client portal's navigation (client users see nothing else). */
+export const CLIENT_NAVIGATION: NavGroup[] = [
+  {
+    label: 'Client portal',
+    items: [
+      {
+        href: '/client',
+        label: 'Overview',
+        icon: 'dashboard',
+        permission: 'client-portal.view',
+        exact: true,
+      },
+      {
+        href: '/client/samples',
+        label: 'Samples',
+        icon: 'sample',
+        permission: 'client-portal.view',
+      },
+      {
+        href: '/client/reports',
+        label: 'Reports',
+        icon: 'report',
+        permission: 'client-portal.view',
+      },
+    ],
+  },
+];
+
 export function canSee(item: NavItem, session: SessionInfo): boolean {
   if (item.platformOnly) return session.user.isPlatformAdmin;
   if (item.permissions && !item.permissions.every((p) => session.access.permissions.includes(p))) {
@@ -125,8 +155,10 @@ export function canSee(item: NavItem, session: SessionInfo): boolean {
 
 /** The navigation this user may see; empty groups are dropped. */
 export function visibleNavigation(session: SessionInfo): NavGroup[] {
-  return NAVIGATION.map((group) => ({
-    ...group,
-    items: group.items.filter((item) => canSee(item, session)),
-  })).filter((group) => group.items.length > 0);
+  return (session.client ? CLIENT_NAVIGATION : NAVIGATION)
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => canSee(item, session)),
+    }))
+    .filter((group) => group.items.length > 0);
 }

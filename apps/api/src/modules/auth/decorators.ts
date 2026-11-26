@@ -7,6 +7,7 @@ export const IS_PUBLIC_KEY = 'flux:public';
 export const REQUIRES_PLATFORM_ADMIN_KEY = 'flux:requires-platform-admin';
 export const REQUIRED_PERMISSIONS_KEY = 'flux:required-permissions';
 export const REQUIRED_MODULE_KEY = 'flux:required-module';
+export const CLIENT_USERS_KEY = 'flux:client-users';
 
 type Decorator = MethodDecorator & ClassDecorator;
 
@@ -22,6 +23,12 @@ export const RequirePlatformAdmin = (): Decorator => SetMetadata(REQUIRES_PLATFO
  */
 export const RequirePermission = (...permissions: [PermissionKey, ...PermissionKey[]]): Decorator =>
   SetMetadata(REQUIRED_PERMISSIONS_KEY, permissions);
+
+/**
+ * Opens a route to client portal users. They are refused every other route (deny by default),
+ * whatever permissions it requires, so a staff route can never leak to a client by mistake.
+ */
+export const AllowClientUsers = (): Decorator => SetMetadata(CLIENT_USERS_KEY, true);
 
 /** The caller's tenant must be licensed for this module (core modules always pass). */
 export const RequireModule = (module: ModuleKey): Decorator =>
@@ -57,6 +64,22 @@ export const CurrentTenant = createParamDecorator(
       throw AppException.forbidden('This action is only available inside an organisation');
     }
     return { tenantId: user.tenantId };
+  },
+);
+
+/** Tenant and client of a client portal user; rejects everyone else (staff included). */
+export interface ClientContext extends TenantContext {
+  clientId: string;
+}
+
+export const CurrentClient = createParamDecorator(
+  (_data: unknown, ctx: ExecutionContext): ClientContext => {
+    const user = requestOf(ctx).user;
+    if (!user) throw AppException.unauthenticated();
+    if (!user.tenantId || !user.clientId) {
+      throw AppException.forbidden('The client portal is for client users');
+    }
+    return { tenantId: user.tenantId, clientId: user.clientId };
   },
 );
 

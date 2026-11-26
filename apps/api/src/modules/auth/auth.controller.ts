@@ -24,11 +24,13 @@ import { ZodValidationPipe } from '../../common/validation/zod-validation.pipe';
 import { isCookieSecure, type Env } from '../../config/env';
 import { AuthService } from './auth.service';
 import type { AuthUser, AuthenticatedRequest } from './auth.types';
-import { CurrentSessionId, CurrentUser, Public } from './decorators';
+import { AllowClientUsers, CurrentSessionId, CurrentUser, Public } from './decorators';
 import { clearSessionCookie, readSessionToken, setSessionCookie } from './session-cookie';
 import { SessionService } from './session.service';
 
+/** Sign-in, session and own password: open to client portal users too. */
 @Controller('auth')
+@AllowClientUsers()
 export class AuthController {
   private readonly secureCookie: boolean;
 

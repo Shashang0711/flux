@@ -17,9 +17,9 @@ function initials(name: string): string {
 }
 
 /** The FLUX wordmark with its mark. */
-export function Brand() {
+export function Brand({ href = '/' }: { href?: string }) {
   return (
-    <Link href="/" className={styles.brand} aria-label="FLUX home">
+    <Link href={href} className={styles.brand} aria-label="FLUX home">
       <span className={styles.brandMark} aria-hidden="true">
         F
       </span>
@@ -31,15 +31,17 @@ export function Brand() {
 /** Signed-in layout: permission-aware navigation, organisation and user menu. */
 export function AppShell({ session, children }: { session: SessionInfo; children: ReactNode }) {
   const groups = visibleNavigation(session);
-  const orgName = session.tenant?.name ?? 'Platform administration';
+  // Client users see their own company.
+  const orgName = session.client?.name ?? session.tenant?.name ?? 'Platform administration';
+  const home = session.client ? '/client' : '/';
   return (
     <ShellFrame
-      brand={<Brand />}
+      brand={<Brand href={home} />}
       orgName={orgName}
       sidebar={
         <div className={styles.sidebarInner}>
           <div className={styles.sidebarHead}>
-            <Brand />
+            <Brand href={home} />
             <p className={styles.org}>{orgName}</p>
           </div>
           <nav aria-label="Main" className={styles.nav}>
@@ -47,7 +49,13 @@ export function AppShell({ session, children }: { session: SessionInfo; children
               <div key={group.label} className={styles.navGroup}>
                 <p className={styles.navGroupLabel}>{group.label}</p>
                 {group.items.map((item) => (
-                  <NavLink key={item.href} href={item.href} label={item.label} icon={item.icon} />
+                  <NavLink
+                    key={item.href}
+                    href={item.href}
+                    label={item.label}
+                    icon={item.icon}
+                    exact={item.exact}
+                  />
                 ))}
               </div>
             ))}
@@ -63,7 +71,7 @@ export function AppShell({ session, children }: { session: SessionInfo; children
               </span>
             </div>
             <div className={styles.userActions}>
-              <Link className="btn" href="/account">
+              <Link className="btn" href={session.client ? '/client/account' : '/account'}>
                 <Icon name="account" size={16} />
                 Account
               </Link>

@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { request, type FullConfig } from '@playwright/test';
-import { OPERATOR, OWNER, STATE } from './fixtures';
+import { CLIENT_USER, OPERATOR, OWNER, STATE } from './fixtures';
 
 /**
  * Creates the demo tenant and data through the API (idempotent: an existing tenant is reused)
@@ -19,7 +19,15 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
     data: {
       name: 'Oceanic Testing Ltd',
       slug: 'oceanic-e2e',
-      modules: ['clients', 'vessels', 'lab-setup', 'receiving', 'samples', 'reports'],
+      modules: [
+        'clients',
+        'vessels',
+        'lab-setup',
+        'receiving',
+        'samples',
+        'reports',
+        'client-portal',
+      ],
       admin: { name: 'Owen Owner', email: OWNER.email, password: OWNER.password },
     },
   });
@@ -33,8 +41,14 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   if (!login.ok()) throw new Error(`Owner sign-in failed (${login.status()})`);
   if (freshTenant) await seed(owner);
   await owner.storageState({ path: STATE.owner });
+
+  const client = await request.newContext({ baseURL });
+  const clientLogin = await client.post('/api/v1/auth/login', { data: CLIENT_USER });
+  if (!clientLogin.ok()) throw new Error(`Client sign-in failed (${clientLogin.status()})`);
+  await client.storageState({ path: STATE.client });
   await operator.dispose();
   await owner.dispose();
+  await client.dispose();
 }
 
 type Api = Awaited<ReturnType<typeof request.newContext>>;
@@ -121,6 +135,12 @@ async function seed(api: Api): Promise<void> {
     );
     clients.push(client);
   }
+  // A client portal login for the first client.
+  await json(
+    await api.post(`/api/v1/clients/${clients[0].id}/portal-users`, {
+      data: { name: 'Carla Client', email: CLIENT_USER.email, password: CLIENT_USER.password },
+    }),
+  );
   // The first client wants "Report published" emails (sent to Mailpit locally).
   await json(
     await api.put(`/api/v1/clients/${clients[0].id}/notification-rules/report.published`, {
